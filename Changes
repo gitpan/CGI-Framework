@@ -1,6 +1,12 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.4 2003/06/02 16:44:59 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.5 2003/06/19 23:25:25 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.05
+	- Fixed a bug that caused the framework not to call the pre_templatename and
+	  validate_templatename subroutines if the non-OOP (function-based) approach using
+	  the initialize_cgi_framework initializer was used, and the callbacks_namespace
+	  parameter was not supplied.
 
 0.04
 	- Any methods and initializer parameters that were made up of 2 concatenated words

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.59 2003/06/02 16:44:59 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.63 2003/06/19 23:25:25 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -11,7 +11,7 @@ use CGI::Carp qw(fatalsToBrowser);
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.04;
+	$VERSION = 0.05;
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
@@ -192,7 +192,9 @@ This directory will contain all the templates you create.  Templates should end 
 
 =item sessions/
 
-This directory will be a temporary holder for all the session files.  It's permissions should allow the user that the web server runs as (typically "nobody") to write to it.
+If you decide to use file-based sessions storage (the default), this directory will be the holder for all the session files.  It's permissions should allow the user that the web server runs as (typically "nobody") to write to it.
+
+The other alternative is for you to use MySQL-based sessions storage, in which case you won't need to create this directory, but instead initialize the database.  More info about this in the CONSTRUCTOR/INITIALIZER documentation section.
 
 =item public_html/
 
@@ -572,13 +574,17 @@ Very similar to the above html() method, except it treats the key's value as an 
 
 Very similar to the above html_push() method, except it unshift()s instead of push()es the value.
 
-=item remember($scalar)
+=item remember($scalar [, $scalar])
 
-This method accepts a mandatory scalar as it's first argument.  It then treats that scalar as a key in the just-submitted form, and saves that key-value pair into the session.  This method is simply shorthand for saying:
+This method accepts a mandatory scalar source key name as it's first argument and an optional scalar destination key name as it's second argument .  It then treats that source scalar as a key in the just-submitted form, and saves that key-value pair into the session.  This method is simply shorthand for saying:
 
-	$instance->session($keyname, $instance->form($keyname));
+	$instance->session($sourcekeyname, $instance->form($sourcekeyname));
 
-It is frequently used to premanently save a submitted form key+value inside the validate_templatename() sub.
+If the second optional parameter is supplied, then that destination key is used in the session.  This allows the key saved in the session to have a different name than the one submitted in the form.  In that case, this method becomes a shorthand for:
+
+	$instance->session($destinationekeyname, $instance->form($sourcekeyname));
+
+It is frequently used to premanently save a submitted form key+value inside the validate_templatename() sub after it has been checked for correctness.
 
 =item session($scalar [, $scalar])
 
@@ -793,7 +799,9 @@ sub html_unshift {
 # An alias to new(), to be used in nooop mode
 #
 sub initialize_cgi_framework {
-	return new("CGI::Framework", @_);
+	my %para = ref($_[0]) eq "HASH" ? %{ $_[0] } : @_;
+	$para{callbacks_namespace} ||= (caller)[0] || "main";
+	return new("CGI::Framework", \%para);
 }
 
 #
@@ -958,9 +966,10 @@ sub new {
 # Copies that key from the form to the session
 #
 sub remember {
-	my $self = _getself(\@_);
-	my $key = shift || croak "key not supplied";
-	$self->session($key, $self->form($key));
+	my $self           = _getself(\@_);
+	my $sourcekey      = shift || croak "key not supplied";
+	my $destinationkey = shift || $sourcekey;
+	$self->session($destinationkey, $self->form($sourcekey));
 }
 
 #

@@ -1,6 +1,18 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.8 2003/10/14 22:44:24 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.10 2003/11/23 06:40:07 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.09
+	- Fixed a bug that caused language tags in a template with no content
+	  in them (such as <en></en>) to cause random parsing problems and
+	  missing content.
+	- Introduced internationalization and localization to errors added
+	  via the add_error() method by utilizing the excellent Locale::Maketext
+	  module.
+	- Documentation clarification for multi-language support
+
+0.08
+	- Added new method initial_template()
 
 0.07
 	- Implemented new logging features:

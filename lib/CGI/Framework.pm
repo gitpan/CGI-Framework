@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.83 2003/10/14 22:38:32 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.90 2003/11/23 06:40:07 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,13 +12,13 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.07;
+	$VERSION = "0.09";
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
 
 	@EXPORT      = qw ();
-	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework log_this remember session show_template);
+	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template);
 	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
 }
 
@@ -26,7 +26,7 @@ BEGIN {
 
 CGI::Framework - A simple-to-use, lightweight web CGI framework
 
-It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic :)
+It is primarily a glue between HTML::Template, CGI::Session, CGI, Locale::Maketext and some magic :)
 
 =head1 SYNOPSIS
 
@@ -149,7 +149,7 @@ For each template created, you can optionally write none, some or all of the nee
 
 This sub will be called after a user submits the form from template templatename.  In this sub you should use the assert_session() and assert_form() methods to make sure you have a sane environment populated with the variables you're expecting.
 
-After that, you should inspect the supplied input from the form in that template.  If any errors are found, use the add_error() method to record your objections.  If no errors are found, you may use the session() method to save the form variables into the session for later utilization.
+After that, you should inspect the supplied input from the form in that template.  If any errors are found, use the add_error() method to record your objections.  If no errors are found, you may use the session() or remember() methods to save the form variables into the session for later utilization.
 
 =item pre_templatename()
 
@@ -185,7 +185,7 @@ This is where your CGI that use()es CGI::Framework will be placed.  CGIs placed 
 
 =item lib/
 
-This directory will contain 2 important files require()ed by the CGIs, pre_post.pm and validate.pm.  pre_post.pm should contain all pre_templatename() and post_templatename() routines, while validate.pm should contain all validate_templatename() routines.
+This directory will contain 2 important files require()ed by the CGIs, pre_post.pm and validate.pm.  pre_post.pm should contain all pre_templatename() and post_templatename() routines, while validate.pm should contain all validate_templatename() routines.  This seperation is not technically necessary, but is recommended.  This directory will also possibly contain localization.pm which will be a base sub-class of L<Locale::Maketext> if you decide to make your errors bi-lingual.  This directory will also hold any custom .pm files you write for your project.
 
 =item templates/
 
@@ -263,20 +263,7 @@ Has been added automatically for you by CGI::Framework. See the PRE-DEFINED TEMP
 
 =item CGI::Framework language tags
 
-If you supplied a "valid_languages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  This allows you to easily write multi-lingual templates, simply by surrounding each language with the appropriate tag.  Depending on the client's chosen language, all other languages will not be served.
-
-For example, if your new() constructor included:
-
-	valid_languages	=>	['en', 'fr']
-
-You can then use in the template something like this:
-
-	<en>Good morning</en>
-	<fr>Bonjour</fr>
-
-And the user will be served the right one.
-
-"The right one" needs some elaboration here: By default, the first language supplied in the valid_languages arrayref will be set as the default language.  The user could then change their default language at any point by submitting a form element named "_lang" and a value set to any of the values in the arrayref.
+If you supplied a "valid_languages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section
 
 =item The process() javascript function
 
@@ -493,7 +480,7 @@ Normally fatal errors (caused by a die() anywhere in the program) are captured b
 
 B<MANDATORY>
 
-This key should have a scalar value with the name of the first template that will be shown to the client when the dispatch() method is called.
+This key should have a scalar value with the name of the first template that will be shown to the client when the dispatch() method is called.  It can be changed after initialization with the initial_template() method before the dispatch() method is called.
 
 =item import_form
 
@@ -514,6 +501,12 @@ It provides a more flexible alternative to using the form() method since it can 
 B<OPTIONAL>
 
 This variable should have a scalar value with a fully-qualified filename in it.  It will be used by the log_this() method as the filename to log messages to.  If supplied, make sure that it is writeable by the user your web server software runs as.
+
+=item maketext_class_name
+
+B<OPTIONAL>
+
+If you wish to localize errors you add via the add_error() method, this key should contain the name of the class you created as the L<Locale::Maketext> localization class, such as for example "MyProject::L10N" or "MyProjectLocalization".   Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section.  You must also set the "valid_languages" key if you wish to set this key.
 
 =item sendmail
 
@@ -561,7 +554,7 @@ This key should have a scalar value holding a directory name which contains all 
 
 B<OPTIONAL>
 
-This key should have an arrayref value.  The array should contain all the possible language tags you've used in the templates.
+This key should have an arrayref value.  The array should contain all the possible language tags you've used in the templates.  Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section.  You must set this key if you wish to also set the "maketext_class_name" key.
 
 =back
 
@@ -578,6 +571,8 @@ Just like the above new() constructor, except used in the function-based approac
 =item add_error($scalar)
 
 This method accepts a scalar error and adds it to the list of errors that will be shown to the client.  It should only be called from a validate_templatename() subroutine for each error found during validating the form.  This will cause the dispatch() method to re-display the previous template along with all the errors added.
+
+If you specified the "valid_languages" and the "maketext_class_name" keys to the initializer, the error message you give to this method will be localized to the user's preferred language (or the default language) before being showed to the user.  Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section.  If this is the case, you may specify extra arguments after the main $scalar, and they will be passed verbatim to L<Locale::Maketext>'s maketext() method - this is often used to localize variables within a sentence.
 
 =item assert_form(@array)
 
@@ -665,6 +660,73 @@ This variable will contain the URL to the current CGI
 
 =back
 
+=head1 INTERNATIONALIZATION (i18n) AND LOCALIZATION (l10n)
+
+One of this module's strengths is simplifying support for multi-(human)languages.  When the user is presented lingual pieces using this module, it has usually originated from either:
+
+=over 4
+
+=item Content inside one of the templates
+
+=item Errors added via the add_error() method
+
+=back
+
+Multi-language support is initiated by you by supplying the "valid_languages" arrayref to the CGI::Framework constructor.  This arrayref should contain a list of language tags you wish to support in your application.  These tags are not necessarily the exact same tags as the ISO-specified official language tag, and as a matter of fact it is recommended that you use tags that are as short as possible for reasons that will be apparent below.
+
+As an example, if you intend to support English and French in your application, supplying this to the constructor would indicate that:
+
+	"valid_languages"	=>	['en', 'fr'],
+
+When the module sends output to the user, it will try to send the "appropriate" language localization.
+
+B<What is the "appropriate" language localization to send ?>
+
+The module uses a fairly simple logic to determine which is the language localization to send:
+
+=over 4
+
+=item The session variable "_lang"
+
+If the session variable "_lang" is set, it will be used as the user's desired localization.
+
+You can either populate this variable manually in your code, such as by:
+
+	session("_lang", "en");
+
+Or more conveinently, let CGI::Framework handle that job for you by having the templates set a form element named "_lang".  This allows you to add to a top-header template a "Switch to English" button that sets the form element "_lang" to "en", and a "Switch to French" button that sets the form element "_lang" to "en".
+
+When CGI::Framework is processing the submitted form and notices that the form element "_lang" is set, it will update the session's "_lang" correspondingly, hence setting that user's language.
+
+=item The default language
+
+If the session variable "_lang" is not set as described above, the default language that will be used is the first language tag listed in the "valid_languages" arrayref.
+
+=back
+
+Finally, this is how to actually define your multi-lingual content:
+
+=over 4
+
+=item Localizing content inside the templates
+
+This is where pleasantness begins.  The language tags you defined in the "valid_languages" constructor key can be used as HTML tags inside the templates!  CGI::Framework will take care of parsing and presenting the correct language and illiminating the others.  An example in a bilingual template:
+
+	<en>Good morning!</en>
+	<fr>Bonjour!</fr>
+
+=item Localizing errors added via the add_error() method
+
+By default, errors you add via the add_error() method will not be localized and will be passed straight-through to the errors template and shown as-is to the end user.
+
+To enable localization for the errors, you will need to, aside from supplying the "valid_languages" key, also supply the "maketext_class_name" key to the constructor.  This should be the name of a class that you created.  CGI::Framework will take care of use()ing that class.
+
+Exactly what should be in that class ?  This is where I direct you to read L<Locale::Maketext>.  This class is your project's base localization class.  For the impatient, skip down in L<Locale::Maketext>'s POD to the "HOW TO USE MAKETEXT" section.  Follow it step by step except the part about replacing all your print() statements with print maketext() - this is irrelevant in our scenario.
+
+After you do the above, your calls to the add_error() method will be automatically localized, using L<Locale::Maketext> and your custom localization class.
+
+=back
+
 =head1 BUGS
 
 I do not (knowingly) release buggy software.  If this is the latest release, it's probably bug-free as far as I know.  If you do find a problem, please contact me and let me know.
@@ -687,7 +749,7 @@ Copyright (C) 2003 Mina Naguib.
 
 =head1 SEE ALSO
 
-L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>, L<CGI::Carp>.
+L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>, L<Locale::Maketext>, L<CGI::Carp>.
 
 =cut
 
@@ -698,7 +760,9 @@ L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>, L<CGI::Carp>
 sub add_error {
 	my $self            = _getself(\@_);
 	my $error           = shift || croak "Error not supplied";
+	my @parameters      = @_;
 	my $existing_errors = $self->{_html}->{_errors} || [];
+	$error = $self->localize($error, @parameters);
 	push(@$existing_errors, { error => $error, });
 	$self->{_html}->{_errors} = $existing_errors;
 	return 1;
@@ -859,6 +923,15 @@ sub html_unshift {
 }
 
 #
+# Re-sets initial_template
+#
+sub initial_template {
+	my $self = _getself(\@_);
+	my $initial_template = shift || croak "initial template not supplied";
+	$self->{initial_template} = $initial_template;
+}
+
+#
 # An alias to new(), to be used in nooop mode
 #
 sub initialize_cgi_framework {
@@ -978,6 +1051,9 @@ sub new {
 	# Now we do sanity checking
 	#
 	ref $para{valid_languages} eq "ARRAY" || croak "valid_languages must be an array ref";
+	if ($para{"maketext_class_name"}) {
+		@{ $para{valid_languages} } || croak "valid_languages must be set to at least one language to specify the maketext_class_name key";
+	}
 	$para{sessions_dir} && $para{sessions_mysql_dbh} && croak "Only one of sessions_dir and sessions_mysql_dbh may be supplied";
 	if ($para{sessions_dir}) {
 
@@ -1020,6 +1096,17 @@ sub new {
 	$self->{log_filename}        = $para{log_filename};
 	$self->{_cgi}                = new CGI || die "Failed to create a new CGI instance: $! $@\n";
 	$cookie_value = $self->{_cgi}->cookie($para{cookie_name}) || undef;
+
+	if ($para{"maketext_class_name"}) {
+		undef $@;
+		eval { eval("require $para{'maketext_class_name'};") || die "Failed to require() $para{'maketext_class_name'}: $! $@"; };
+		if ($@) {
+			croak "Could not properly initialize maketext_class_name ($para{'maketext_class_name'}): $@";
+		}
+		else {
+			$self->{maketext_class_name} = $para{"maketext_class_name"};
+		}
+	}
 
 	if ($para{sessions_dir}) {
 
@@ -1157,10 +1244,10 @@ sub show_template {
 	#
 	foreach (@{ $self->{valid_languages} }) {
 		if ($self->session("_lang") eq $_) {
-			$output =~ s#<$_>(.+?)</$_>#$1#gsi;
+			$output =~ s#<$_>(.*?)</$_>#$1#gsi;
 		}
 		else {
-			$output =~ s#<$_>(.+?)</$_>##gsi;
+			$output =~ s#<$_>(.*?)</$_>##gsi;
 		}
 	}
 
@@ -1255,6 +1342,32 @@ sub log_this {
 	flock(FH, LOCK_UN);
 	close(FH);
 	return (1);
+}
+
+#
+# Takes a scalar
+# Returns it's localized version
+# or exact same unmodified string if localization is not applicable in current session
+#
+sub localize {
+	my $self       = _getself(\@_);
+	my $string     = shift || croak "string not supplied to localize";
+	my @parameters = @_;
+	my $localized;
+	my $language;
+	$self->{"maketext_class_name"} || return $string;
+	if (!$self->{_language_handle}) {
+		foreach $language (@{ $self->{valid_languages} }) {
+			if ($self->session("_lang") eq $language) {
+				undef $@;
+				eval { eval('$self->{_language_handle} = ' . $self->{'maketext_class_name'} . '->get_handle( "' . $language . '" );') || die "Failed to get_handle() from $self->{'maketext_class_name'}: $! $@"; };
+				die $@ if $@;
+				last;
+			}
+		}
+	}
+	$localized = $self->{_language_handle}->maketext($string, @parameters);
+	return $localized;
 }
 
 ############################################################################
@@ -1611,8 +1724,7 @@ EOM
 		],
 		[ "$images_dir/dotarrow.gif",    0644, "\x47\x49\x46\x38\x39\x61\x0b\x00\x08\x00\xb3\x00\x00\xff\xff\xff\xff\x63\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x0b\x00\x08\x00\x00\x04\x14\x10\xc8\x09\x42\xa0\xd8\xe2\x2d\xb5\xbf\xd6\x57\x81\x17\x67\x76\x25\xa7\x01\x11\x00\x3b\x00" ],
 		[ "$images_dir/exclamation.gif", 0644, "\x47\x49\x46\x38\x39\x61\x0e\x00\x0e\x00\xa2\xff\x00\xff\xff\xff\xff\xe6\xb3\xff\xcc\x66\x80\x80\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x21\xff\x0b\x41\x44\x4f\x42\x45\x3a\x49\x52\x31\x2e\x30\x02\xde\xed\x00\x21\xff\x0b\x4e\x45\x54\x53\x43\x41\x50\x45\x32\x2e\x30\x03\x01\x07\x00\x00\x21\xf9\x04\x04\x28\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x28\x08\xba\x44\xfb\x8f\x08\xe1\x20\x9b\xb3\x42\x49\xb9\x56\x5c\x87\x69\xa1\x38\x02\xa5\x39\xa6\x0d\x96\xa1\x6e\x4c\x5d\x59\xf8\xc1\xe6\x0d\xba\x3a\xdd\x47\xba\x04\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x06\x00\x03\x00\x02\x00\x08\x00\x00\x03\x04\x28\xba\xdc\x92\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x33\xfb\x6f\x84\xe0\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x19\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x0d\x08\xba\xdc\xfe\x30\xca\x49\xab\xbd\x38\xeb\xed\x12\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x33\xfb\x6f\x84\xe0\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x44\xfb\x8f\x08\xe1\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x28\x00\x00\x00\x2c\x06\x00\x03\x00\x02\x00\x08\x00\x00\x03\x05\x48\xba\x2c\xc2\x09\x00\x3b\x00" ],
-	  )
-	{
+	  ) {
 		($filename, $mode, $content) = @$_;
 		print "Creating file $filename ";
 		open(FH, ">$filename") || die "\n\nError: Failed to open $filename for writing: $!\n\n";

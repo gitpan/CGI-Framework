@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.90 2003/11/23 06:40:07 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.95 2003/12/12 06:55:34 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = "0.09";
+	$VERSION = "0.10";
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
@@ -179,25 +179,25 @@ This is the recommended directory structure for a new project:
 
 =over 4
 
-=item cgi-bin/
+=item F<cgi-bin/>
 
-This is where your CGI that use()es CGI::Framework will be placed.  CGIs placed there will be very simple, initializing a new CGI::Framework instance and calling the dispatch() method.  The CGIs should also add lib/ to their 'use libs' path, then require pre_post and validate.
+This is where your CGI that use()es CGI::Framework will be placed.  CGIs placed there will be very simple, initializing a new CGI::Framework instance and calling the dispatch() method.  The CGIs should also add F<lib/> to their 'use libs' path, then require pre_post and validate.
 
-=item lib/
+=item F<lib/>
 
-This directory will contain 2 important files require()ed by the CGIs, pre_post.pm and validate.pm.  pre_post.pm should contain all pre_templatename() and post_templatename() routines, while validate.pm should contain all validate_templatename() routines.  This seperation is not technically necessary, but is recommended.  This directory will also possibly contain localization.pm which will be a base sub-class of L<Locale::Maketext> if you decide to make your errors bi-lingual.  This directory will also hold any custom .pm files you write for your project.
+This directory will contain 2 important files require()ed by the CGIs, F<pre_post.pm> and F<validate.pm>.  F<pre_post.pm> should contain all pre_templatename() and post_templatename() routines, while F<validate.pm> should contain all validate_templatename() routines.  This seperation is not technically necessary, but is recommended.  This directory will also possibly contain F<localization.pm> which will be a base sub-class of L<Locale::Maketext> if you decide to make your errors added via add_error() localized to the use's language (refer to the "INTERNATIONALIZATION AND LOCALIZATION" section).  This directory will also hold any custom .pm files you write for your project.
 
-=item templates/
+=item F<templates/>
 
 This directory will contain all the templates you create.  Templates should end in the .html extension to be found by the show_template() method.  More on how you should create the actual templates in the CREATE TEMPLATES section
 
-=item sessions/
+=item F<sessions/>
 
 If you decide to use file-based sessions storage (the default), this directory will be the holder for all the session files.  It's permissions should allow the user that the web server runs as (typically "nobody") to write to it.
 
 The other alternative is for you to use MySQL-based sessions storage, in which case you won't need to create this directory, but instead initialize the database.  More info about this in the CONSTRUCTOR/INITIALIZER documentation section.
 
-=item public_html/
+=item F<public_html/>
 
 This directory should contain any static files that your templates reference, such as images, style sheets, static html links, multimedia content, etc...
 
@@ -205,7 +205,7 @@ This directory should contain any static files that your templates reference, su
 
 =item CONFIGURE YOUR WEB SERVER
 
-How to do this is beyond this document due to the different web servers out there, but in summary, you want to create a new virtual host, alias the document root to the above public_html/ directory, alias /cgi-bin/ to the above cgi-bin/ directory and make sure the server will execute instead of serve files there, and in theory you're done.
+How to do this is beyond this document due to the different web servers out there, but in summary, you want to create a new virtual host, alias the document root to the above F<public_html/> directory, alias /cgi-bin/ to the above F<cgi-bin/> directory and make sure the server will execute instead of serve files there, and in theory you're done.
 
 =item CREATE TEMPLATES
 
@@ -257,13 +257,13 @@ Has been added in the past to the session using the session() method.
 
 =item *
 
-Has been added automatically for you by CGI::Framework. See the PRE-DEFINED TEMPLATE VARIABLES section.
+Has been added automatically for you by CGI::Framework. Refer to the "PRE-DEFINED TEMPLATE VARIABLES" section.
 
 =back
 
 =item CGI::Framework language tags
 
-If you supplied a "valid_languages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section
+If you supplied a "valid_languages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section.
 
 =item The process() javascript function
 
@@ -280,6 +280,10 @@ B<MANDATORY>
 This first parameter is the name of the template to show.  For example, if the user clicked on an option called "show my account info" that should load the accountinfo.html template, the javascript code could look like this:
 
 	<a href="#" onclick="process('accountinfo');">Show my account info</a>
+
+or
+
+	<input type="button" value=" LIST MY ACCOUNT BALANCES &gt;&gt; " onclick="process('accountbalances');">
 
 =item item
 
@@ -309,11 +313,11 @@ If this third parameter is supplied to the process() call with a true value such
 
 =item The errors template
 
-It is mandatory to create a special template named errors.html.  This template will be included in all the served pages, and it's job is to re-iterate over all the errors added with the add_error() method and display them.  A simple errors.html template looks like this:
+It is mandatory to create a special template named F<errors.html>.  This template will be included in all the served pages, and it's job is to re-iterate over all the errors added with the add_error() method and display them.  A simple F<errors.html> template looks like this:
 
 =over 4
 
-=item errors.html sample:
+=item F<errors.html> sample:
 
 	<TMPL_IF NAME="_errors">
 		<font color=red><b>The following ERRORS have occurred:</b></font>
@@ -330,13 +334,13 @@ It is mandatory to create a special template named errors.html.  This template w
 
 =item The missing info template
 
-It is recommended, although not mandatory, to create a special template named missinginfo.html.  This template will be shown to the client when an assertion made through the assert_form() or assert_session() methods fail.  It's job is to explain to the client that they're probably using a timed-out session, and invites them to start from the beginning.
+It is recommended, although not mandatory, to create a special template named F<missinginfo.html>.  This template will be shown to the client when an assertion made through the assert_form() or assert_session() methods fail.  It's job is to explain to the client that they're probably using a timed-out session, and invites them to start from the beginning.
 
 If this template is not found, the above error will be displayed to the client in a text mode.
 
 =item The fatal error template
 
-It is recommended, although not mandatory, to create a special template called fatalerror.html and specify that name as the fatal_error_template constructor key.  Usually when a fatal error occurs it will be caught by L<CGI::Carp> and a trace will be shown to the browser.  This is often technical and is always an eyesore since it does not match your site design.  If you'd like to avoid that and show a professional apologetic message when a fatal error occurs, make use of thie fatal error template feature.
+It is recommended, although not mandatory, to create a special template called F<fatalerror.html> and specify that name as the fatal_error_template constructor key.  Usually when a fatal error occurs it will be caught by L<CGI::Carp> and a trace will be shown to the browser.  This is often technical and is always an eyesore since it does not match your site design.  If you'd like to avoid that and show a professional apologetic message when a fatal error occurs, make use of this fatal error template feature.
 
 See the "PRE-DEFINED TEMPLATE VARIABLES" section below for an elaboration on the fatal error template and the special variable _fatal_error that you could use in it.
 
@@ -346,11 +350,11 @@ See the "PRE-DEFINED TEMPLATE VARIABLES" section below for an elaboration on the
 
 For each template you created, you might need to write a pre_templatename() sub, a post_templatename() sub and a validate_templatename() sub as described earlier.  None of these subs are mandatory.
 
-For clarity and consistency purposes, the pre_templatename() and post_templatename() subs should go into the pre_post.pm file, and the validate_templatename() subs should go into the validate.pm file.
+For clarity and consistency purposes, the pre_templatename() and post_templatename() subs should go into the F<pre_post.pm> file, and the validate_templatename() subs should go into the F<validate.pm> file.
 
 =item WRITE YOUR CGI
 
-Copying the SYNOPSIS into a new CGI file in the cgi-bin/ directory is usually all that's needed unless you have some advanced requirements such as making sure the user is authenticated first before allowing them access to certain templates.
+Copying the SYNOPSIS into a new CGI file in the F<cgi-bin/> directory is usually all that's needed unless you have some advanced requirements such as making sure the user is authenticated first before allowing them access to certain templates.
 
 =item TEST, FINE TUNE, ETC . . .
 
@@ -368,11 +372,11 @@ Install this module
 
 =item *
 
-Run: perl -MCGI::Framework -e 'CGI::Framework::INITIALIZENEWPROJECT "/path/to/your/project/base"'
+Run: perl -MCGI::Framework -e 'CGI::Framework::INITIALIZENEWPROJECT "F</path/to/your/project/base>"'
 
 =item *
 
-cd /path/to/your/project/base
+cd F</path/to/your/project/base>
 
 Customize the stubs that were created there for you.  Refer back to the not-so-impatient section above for clarifications of anything you see there.
 
@@ -464,6 +468,14 @@ B<OPTIONAL>
 
 This key should have a scalar value with the name of the cookie to use when communicating the session ID to the client.  If not supplied, will default to "sessionid_" and a simplified representation of the URL.
 
+=item disable_back_button
+
+B<OPTIONAL>
+
+This key should have a scalar value that's true (such as 1) or false (such as 0).  Setting it to true will instruct the framework not to allow the user to use their browser's back button.  This is done by setting no-cache pragmas on every page served, setting a past expiry date, as well as detecting submissions from previously-served templates and re-showing the last template sent.
+
+This behaviour is often desired in time-sensitive web applications.
+
 =item fatal_error_email
 
 B<OPTIONAL>
@@ -494,7 +506,7 @@ You can then use form elements like:
 
 	$error = "Sorry $FORM::firstname, you may not $FORM::action at this time.";
 
-It provides a more flexible alternative to using the form() method since it can be interpolated inside double-quoted strings, however costs more memory.  I am also unsure about how such a namespace would be handled under mod_perl and if it'll remain persistent or not, possibly causing problems.
+It provides a more flexible alternative to using the form() method since it can be interpolated inside double-quoted strings, however costs more memory.  I am also unsure about how such a namespace would be handled under mod_perl and if it'll remain persistent or not, possibly causing "variable-bleeding" problems across sessions.
 
 =item log_filename
 
@@ -568,7 +580,7 @@ Just like the above new() constructor, except used in the function-based approac
 
 =over 4
 
-=item add_error($scalar)
+=item add_error($scalar [, @array ] )
 
 This method accepts a scalar error and adds it to the list of errors that will be shown to the client.  It should only be called from a validate_templatename() subroutine for each error found during validating the form.  This will cause the dispatch() method to re-display the previous template along with all the errors added.
 
@@ -666,9 +678,13 @@ One of this module's strengths is simplifying support for multi-(human)languages
 
 =over 4
 
-=item Content inside one of the templates
+=item *
 
-=item Errors added via the add_error() method
+Content inside one of the templates
+
+=item *
+
+Errors added via the add_error() method
 
 =back
 
@@ -694,7 +710,7 @@ You can either populate this variable manually in your code, such as by:
 
 	session("_lang", "en");
 
-Or more conveinently, let CGI::Framework handle that job for you by having the templates set a form element named "_lang".  This allows you to add to a top-header template a "Switch to English" button that sets the form element "_lang" to "en", and a "Switch to French" button that sets the form element "_lang" to "en".
+Or more conveniently, let CGI::Framework handle that job for you by having the templates set a form element named "_lang".  This allows you to add to a top-header template a "Switch to English" button that sets the form element "_lang" to "en", and a "Switch to French" button that sets the form element "_lang" to "en".
 
 When CGI::Framework is processing the submitted form and notices that the form element "_lang" is set, it will update the session's "_lang" correspondingly, hence setting that user's language.
 
@@ -719,11 +735,41 @@ This is where pleasantness begins.  The language tags you defined in the "valid_
 
 By default, errors you add via the add_error() method will not be localized and will be passed straight-through to the errors template and shown as-is to the end user.
 
-To enable localization for the errors, you will need to, aside from supplying the "valid_languages" key, also supply the "maketext_class_name" key to the constructor.  This should be the name of a class that you created.  CGI::Framework will take care of use()ing that class.
+To enable localization for the errors, you will need to, aside from supplying the "valid_languages" key, also supply the "maketext_class_name" key to the constructor.  This should be the name of a class that you created.  CGI::Framework will take care of use()ing that class.  For example:
+
+	"maketext_class_name"	=>	"MyProjectLocalization",
 
 Exactly what should be in that class ?  This is where I direct you to read L<Locale::Maketext>.  This class is your project's base localization class.  For the impatient, skip down in L<Locale::Maketext>'s POD to the "HOW TO USE MAKETEXT" section.  Follow it step by step except the part about replacing all your print() statements with print maketext() - this is irrelevant in our scenario.
 
-After you do the above, your calls to the add_error() method will be automatically localized, using L<Locale::Maketext> and your custom localization class.
+After you do the above, your calls to the add_error() method will be automatically localized, using L<Locale::Maketext> and your custom localization class.  In our example here, you would end up with:
+
+=over 4
+
+=item *
+
+A file in your F<lib/> folder named F<MyProjectLocalization.pm>
+
+=item *
+
+Inside that file, you should have created the following packages:
+
+=over 4
+
+=item *
+
+	package MyProjectLocalization;
+
+=item *
+
+	package MyProjectLocalization::en;
+
+=item *
+
+	package MyProjectLocalization::fr;
+
+=back
+
+=back
 
 =back
 
@@ -809,26 +855,54 @@ sub clear_session {
 #
 sub dispatch {
 	my $self = _getself(\@_);
+	my $validate_template;
 
 	no strict 'refs';
 
 	#
 	# Validate the data entered:
 	#
-	#	if ($self->form("sv") && !grep { $_ eq $self->form("action") } @FORCEVALIDATEACTION) {
 	if ($self->form("_sv")) {
 
 		#We skip validation as per requested
 	}
-	elsif (defined &{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }) {
-		&{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }($self);
-		if ($self->{_html}->{_errors}) {
+	else {
+		if ($self->form("_template") && !$self->session("_lastsent")) {
 
 			#
-			# There's an error in the info they supplied for the current step
-			# so let's show the last step presented to them
+			# They are submitting a page but we don't have a lastsent template in session - they probably timed out
 			#
-			$self->show_template($self->session("_lastsent"));
+			$self->_missinginfo();
+		}
+
+		if ($self->{disable_back_button} && $self->session("_lastsent")) {
+
+			#
+			# If disable_back_button is set, we always validate last template we sent them
+			#
+			$validate_template = $self->session("_lastsent");
+		}
+		elsif ($self->form("_template")) {
+
+			#
+			# Otherwise we validate the template they're submitting
+			#
+			$validate_template = $self->form("_template");
+		}
+
+		#
+		# We implement validation if possible
+		#
+		if ($validate_template && defined &{"$self->{callbacks_namespace}::validate_$validate_template"}) {
+			&{"$self->{callbacks_namespace}::validate_$validate_template"}($self);
+			if ($self->{_html}->{_errors}) {
+
+				#
+				# The validation didn't go so well and errors were recorded
+				# so we re-show the template the failed validation
+				#
+				$self->show_template($validate_template);
+			}
 		}
 	}
 
@@ -1094,6 +1168,7 @@ sub new {
 	$self->{initial_template}    = $para{initial_template};
 	$self->{callbacks_namespace} = $para{callbacks_namespace};
 	$self->{log_filename}        = $para{log_filename};
+	$self->{disable_back_button} = $para{disable_back_button};
 	$self->{_cgi}                = new CGI || die "Failed to create a new CGI instance: $! $@\n";
 	$cookie_value = $self->{_cgi}->cookie($para{cookie_name}) || undef;
 
@@ -1251,7 +1326,14 @@ sub show_template {
 		}
 	}
 
-	print "Content-type: $content_type\n\n";
+	print "Content-type: $content_type\n";
+	if ($self->{disable_back_button}) {
+		print "Cache-control: no-cache\n";
+		print "Pragma: no-cache\n";
+		print "Expires: Thu, 01 Dec 1994 16:00:00 GMT\n";
+	}
+	print "\n";
+
 	if ($content_type eq "application/x-netscape-autoconfigure-dialer") {
 
 		#
@@ -1301,6 +1383,7 @@ sub show_template {
 	<input type="hidden" name="_action" value="">
 	<input type="hidden" name="_item" value="">
 	<input type="hidden" name="_sv" value="">
+	<input type="hidden" name="_template" value="$template_name">
 	<!-- CGI::Framework END HEADER -->
 EOM
 		$footer = <<"EOM";

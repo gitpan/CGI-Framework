@@ -1,6 +1,23 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.10 2003/11/23 06:40:07 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.12 2003/12/12 07:06:07 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.10
+   - Implemented new logic that fixes problem of the framework validating
+	  the last-sent template even if the client hit BACK in their web browser
+	  and is actually submitting a different template.  The default is now
+	  to validate whichever template the client is submitting, which is not
+	  necessarily the last template sent.
+	- Added new constructor option: disable_back_button
+	  Note that this constructor replicates the behavior of version 0.09
+	  and below.  Unlike the previous versions, the default for
+	  version 0.10 is NOT to disable the back button.
+
+	  If you'd like to maintain the behavior of version 0.09 and
+	  earlier, you must set "disable_back_button => 1" in your
+	  constructor/initializer.
+
+	  See the POD for more details.
 
 0.09
 	- Fixed a bug that caused language tags in a template with no content

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.49 2003/05/04 14:48:07 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.59 2003/06/02 16:44:59 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -11,13 +11,13 @@ use CGI::Carp qw(fatalsToBrowser);
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.03;
+	$VERSION = 0.04;
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
 
 	@EXPORT      = qw ();
-	@EXPORT_OK   = qw (adderror assert_form assert_session clearsession dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework session showtemplate);
+	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form  get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework remember session show_template);
 	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
 }
 
@@ -35,11 +35,11 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
   #
   # Setup the initial framework instance
   #
-  $f = new CGI::Framework {
-	  sessionsdir		=>	"/tmp",
-	  templatesdir		=>	"/home/stuff/myproject/templates",
-	  initialtemplate	=>	"enterusername",
-  }
+  $f = new CGI::Framework (
+	  sessions_dir		=>	"/tmp",
+	  templates_dir		=>	"/home/stuff/myproject/templates",
+	  initial_template	=>	"enterusername",
+  )
   || die "Failed to create a new CGI::Framework instance: $@\n";
 
   #
@@ -49,15 +49,15 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
   $f->dispatch();
 
   #
-  # This sub is automatically called before the "enterusername" template is sent
+  # This sub is automatically called after the "enterusername" template is submitted by the client
   #
   sub validate_enterusername {
 	  my $f = shift;
 	  if (!$f->form("username")) {
-		  $f->adderror("You must enter a username");
+		  $f->add_error("You must enter a username");
 	  }
 	  elsif (!$f->form("password")) {
-		  $f->adderror("You must enter your password");
+		  $f->add_error("You must enter your password");
 	  }
 	  else {
 		  if ($f->form("username") eq "mina" && $f->form("password") eq "verysecret") {
@@ -65,7 +65,7 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
 			  $f->session("authenticated", "1");
 		  }
 		  else {
-			  $f->adderror("Authentication failed");
+			  $f->add_error("Authentication failed");
 		  }
 	  }
   }
@@ -85,7 +85,7 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
   #
   sub post_logout {
 	  my $f = shift;
-	  $f->clearsession();
+	  $f->clear_session();
   }
 
 =head1 DESCRIPTION
@@ -136,7 +136,7 @@ Writing the stub code as per the SYNOPSIS.  This entails creating a new CGI::Fra
 
 =item *
 
-Creating your templates in the templatesdir supplied earlier.  Templates should have the .html extension and can contain any templating variables, loops, and conditions described in the L<HTML::Template> documentation.
+Creating your templates in the templates_dir supplied earlier.  Templates should have the .html extension and can contain any templating variables, loops, and conditions described in the L<HTML::Template> documentation.
 
 =item *
 
@@ -148,7 +148,7 @@ For each template created, you can optionally write none, some or all of the nee
 
 This sub will be called after a user submits the form from template templatename.  In this sub you should use the assert_session() and assert_form() methods to make sure you have a sane environment populated with the variables you're expecting.
 
-After that, you should inspect the supplied input from the form in that template.  If any errors are found, use the adderror() method to record your objections.  If no errors are found, you may use the session() method to save the form variables into the session for later utilization.
+After that, you should inspect the supplied input from the form in that template.  If any errors are found, use the add_error() method to record your objections.  If no errors are found, you may use the session() method to save the form variables into the session for later utilization.
 
 =item pre_templatename()
 
@@ -156,7 +156,7 @@ This sub will be called right before the template templatename is sent to the br
 
 =item post_templatename()
 
-This sub will be called right after the template templatename has been sent to the browser and right before the CGI exits.  It's job is to do any clean-up necessary after displaying that template.  For example, on a final-logout template, this sub could call the clearsession() method to delete any sensitive information.
+This sub will be called right after the template templatename has been sent to the browser and right before the CGI exits.  It's job is to do any clean-up necessary after displaying that template.  For example, on a final-logout template, this sub could call the clear_session() method to delete any sensitive information.
 
 =back
 
@@ -188,7 +188,7 @@ This directory will contain 2 important files require()ed by the CGIs, pre_post.
 
 =item templates/
 
-This directory will contain all the templates you create.  Templates should end in the .html extension to be found by the showtemplate() method.  More on how you should create the actual templates in the CREATE TEMPLATES section
+This directory will contain all the templates you create.  Templates should end in the .html extension to be found by the show_template() method.  More on how you should create the actual templates in the CREATE TEMPLATES section
 
 =item sessions/
 
@@ -222,7 +222,7 @@ Place this tag right under the <body> tag
 
 =item <TMPL_INCLUDE NAME="errors.html">
 
-Place this tag wherever you want errors added with the adderror() method to appear
+Place this tag wherever you want errors added with the add_error() method to appear
 
 =item <cgi_framework_footer>
 
@@ -260,11 +260,11 @@ Has been added automatically for you by CGI::Framework. See the DEFAULT TEMPLATE
 
 =item CGI::Framework language tags
 
-If you supplied a "validlanguages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  This allows you to easily write multi-lingual templates, simply by surrounding each language with the appropriate tag.  Depending on the client's chosen language, all other languages will not be served.
+If you supplied a "valid_languages" arrayref to the new() constructor of CGI::Framework, you can use any of the languages in that arrayref as simple HTML tags.  This allows you to easily write multi-lingual templates, simply by surrounding each language with the appropriate tag.  Depending on the client's chosen language, all other languages will not be served.
 
 For example, if your new() constructor included:
 
-	validlanguages	=>	['en', 'fr']
+	valid_languages	=>	['en', 'fr']
 
 You can then use in the template something like this:
 
@@ -273,7 +273,7 @@ You can then use in the template something like this:
 
 And the user will be served the right one.
 
-"The right one" needs some elaboration here: By default, the first language supplied in the validlanguages arrayref will be set as the default language.  The user could then change their default language at any point by submitting a form element named "_lang" and a value set to any of the values in the arrayref.
+"The right one" needs some elaboration here: By default, the first language supplied in the valid_languages arrayref will be set as the default language.  The user could then change their default language at any point by submitting a form element named "_lang" and a value set to any of the values in the arrayref.
 
 =item The process() javascript function
 
@@ -287,7 +287,7 @@ This javascript function accepts the following parameters:
 
 B<MANDATORY>
 
-This first parameter is the name of the template to show.  For example, if the user clicked on an option called "show my account into" that should load the accountinfo.html template, the javascript code could look like this:
+This first parameter is the name of the template to show.  For example, if the user clicked on an option called "show my account info" that should load the accountinfo.html template, the javascript code could look like this:
 
 	<a href="#" onclick="process('accountinfo');">Show my account info</a>
 
@@ -319,7 +319,7 @@ If this third parameter is supplied to the process() call with a true value such
 
 =item The errors template
 
-It is mandatory to create a special template named errors.html.  This template will be included in all the served pages, and it's job is to re-iterate over all the errors added with the adderror() method and display them.  A simple errors.html template looks like this:
+It is mandatory to create a special template named errors.html.  This template will be included in all the served pages, and it's job is to re-iterate over all the errors added with the add_error() method and display them.  A simple errors.html template looks like this:
 
 =over 4
 
@@ -403,17 +403,17 @@ As the examples show, this is the object-way of doing things:
 
 	sub validate_templatename {
 		my $instance = shift;
-		if (!$instance->form("countries")) {
-			$instance->adderror("You must select a country");
+		if (!$instance->form("country")) {
+			$instance->add_error("You must select a country");
 		}
 		else {
-			$instance->session("country", $instance->form("countries"));
+			$instance->remember("country");
 		}
 	}
 
 	sub pre_templatename {
 		my $instance = shift;
-		$instance->html("countries", [qw(CA US BR)]);
+		$instance->html("country", [qw(CA US BR)]);
 	}
 
 =item THE FUNCTION-BASED WAY
@@ -430,16 +430,16 @@ The function-based way is very similar (and slightly less cumbersome to use due 
 	dispatch();
 
 	sub validate_templatename {
-		if (!form("countries")) {
-			adderror("You must select a country");
+		if (!form("country")) {
+			add_error("You must select a country");
 		}
 		else {
-			session("country", form("countries"));
+			remember("country");
 		}
 	}
 
 	sub pre_templatename {
-		html("countries", [qw(CA US BR)]);
+		html("country", [qw(CA US BR)]);
 	}
 
 =back
@@ -450,11 +450,11 @@ The function-based way is very similar (and slightly less cumbersome to use due 
 
 =item new(%hash)
 
-This is the standard object-oriented constructor.  When called, will return a new CGI::Framework instance.  It accepts a hash with the following keys:
+This is the standard object-oriented constructor.  When called, will return a new CGI::Framework instance.  It accepts a hash (or a hashref) with the following keys:
 
 =over 4
 
-=item callbacksnamespace
+=item callbacks_namespace
 
 B<OPTIONAL>
 
@@ -462,13 +462,13 @@ This key should have a scalar value with the name of the namespace that you will
 
 The main use of this option is to allow you, if you so choose, to place your callbacks subs into any arbitrary namespace you decide on (to avoid pollution of your main namespace for example).
 
-=item cookiename
+=item cookie_name
 
 B<OPTIONAL>
 
 This key should have a scalar value with the name of the cookie to use when communicating the session ID to the client.  If not supplied, will default to "sessionid_" and a simplified representation of the URL.
 
-=item initialtemplate
+=item initial_template
 
 B<MANDATORY>
 
@@ -488,19 +488,29 @@ You can then use form elements like:
 
 It provides a more flexible alternative to using the form() method since it can be interpolated inside double-quoted strings, however costs more memory.  I am also unsure about how such a namespace would be handled under mod_perl and if it'll remain persistent or not, possibly causing problems.
 
-=item sessionsdir
+=item sessions_dir
 
 B<OPTIONAL>
 
 This key should have a scalar value holding a directory name where the session files will be stored.  If not supplied, a suitable temporary directory will be picked from the system.
 
-=item templatesdir
+Note: You may not supply this if you supply the sessions_mysql_dbh key.
+
+=item sessions_mysql_dbh
+
+B<OPTIONAL>
+
+This key should have a value that's a MySQL DBH (DataBase Handle) instance created with the DBI and DBD::Mysql modules.  If supplied then the session data will be stored in the mysql table instead of text files.  For more information on how to prepare the database, refer to the L<CGI::Session::MySQL> documentation.
+
+Note: You may not supply this if you supply the sessions_dir key.
+
+=item templates_dir
 
 B<OPTIONAL>
 
 This key should have a scalar value holding a directory name which contains all the template files.  If not supplied, it will be guessed based on the local directory.
 
-=item validlanguages
+=item valid_languages
 
 B<OPTIONAL>
 
@@ -518,7 +528,7 @@ Just like the above new() constructor, except used in the function-based approac
 
 =over 4
 
-=item adderror($scalar)
+=item add_error($scalar)
 
 This method accepts a scalar error and adds it to the list of errors that will be shown to the client.  It should only be called from a validate_templatename() subroutine for each error found during validating the form.  This will cause the dispatch() method to re-display the previous template along with all the errors added.
 
@@ -530,13 +540,13 @@ This method accepts an array of scalar values.  Each element will be checked to 
 
 Just like the assert_form() method, except it checks the values against the session instead of the submitted form.
 
-=item clearsession
+=item clear_session
 
 This method deletes all the previously-stored values using the session() method.
 
 =item dispatch
 
-This method is the central dispatcher.  It calls validate_templatename on the just-submitted template, checks to see if any errors were added with the adderror() method.  If any errors were added, re-sends the client the previous template, otherwise sends the client the template they requested.
+This method is the central dispatcher.  It calls validate_templatename on the just-submitted template, checks to see if any errors were added with the add_error() method.  If any errors were added, re-sends the client the previous template, otherwise sends the client the template they requested.
 
 =item form($scalar)
 
@@ -562,11 +572,19 @@ Very similar to the above html() method, except it treats the key's value as an 
 
 Very similar to the above html_push() method, except it unshift()s instead of push()es the value.
 
+=item remember($scalar)
+
+This method accepts a mandatory scalar as it's first argument.  It then treats that scalar as a key in the just-submitted form, and saves that key-value pair into the session.  This method is simply shorthand for saying:
+
+	$instance->session($keyname, $instance->form($keyname));
+
+It is frequently used to premanently save a submitted form key+value inside the validate_templatename() sub.
+
 =item session($scalar [, $scalar])
 
 This method accepts a scalar key as it's first argument and an optional scalar value as it's second.  If a value is supplied, it saves the key+value pair into the session for future retrieval.  If no value is supplied, it returns the previously-saved value associated with the given key.
 
-=item showtemplate($scalar)
+=item show_template($scalar)
 
 This method accepts a scalar template name, calls the pre_templatename() sub if found, sends the template to the client, calls the post_templatename() sub if found, then exists.  While sending the template to the client it also takes care of the <cgi_framework_header>, <cgi_framework_footer> tags, as well as the language substitutions.
 
@@ -606,7 +624,7 @@ Copyright (C) 2003 Mina Naguib.
 
 =head1 SEE ALSO
 
-L<HTML::Template>, L<CGI::Session>, L<CGI>.
+L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>.
 
 =cut
 
@@ -614,19 +632,19 @@ L<HTML::Template>, L<CGI::Session>, L<CGI>.
 # Takes a scalar
 # Adds it to the errors que
 #
-sub adderror {
+sub add_error {
 	my $self = _getself(\@_);
-	$self->{_allowadderror} || croak "Cannot call adderror at this time";
+	$self->{_allow_add_error} || croak "Cannot call add_error at this time";
 	my $error = shift || croak "Error not supplied";
-	my $existingerrors = $self->{_html}->{_errors} || [];
-	push (@$existingerrors, { error => $error, });
-	$self->{_html}->{_errors} = $existingerrors;
+	my $existing_errors = $self->{_html}->{_errors} || [];
+	push (@$existing_errors, { error => $error, });
+	$self->{_html}->{_errors} = $existing_errors;
 	return 1;
 }
 
 #
 # This sub asserts that the key(s) supplied to it exists in the submitted form
-# If the value is not true, it calls showtemplate with "missinginfo"
+# If the value is not true, it calls show_template with "missinginfo"
 # It's mostly used by the subs in pre_post* to validate that the values they need exist
 #
 sub assert_form {
@@ -639,7 +657,7 @@ sub assert_form {
 
 #
 # This sub asserts that the key(s) supplied to it exists in the session
-# If the value is not true, it calls showtemplate with "missinginfo"
+# If the value is not true, it calls show_template with "missinginfo"
 # It's mostly used by the subs in pre_post* to validate that the values they need exist
 #
 sub assert_session {
@@ -653,7 +671,7 @@ sub assert_session {
 #
 # Clears the session
 #
-sub clearsession {
+sub clear_session {
 	my $self = _getself(\@_);
 	$self->{_session}->delete();
 	return 1;
@@ -676,24 +694,24 @@ sub dispatch {
 
 		#We skip validation as per requested
 	}
-	elsif (defined &{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }) {
-		$self->{_allowadderror} = 1;
-		&{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }($self);
-		$self->{_allowadderror} = 0;
+	elsif (defined &{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }) {
+		$self->{_allow_add_error} = 1;
+		&{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }($self);
+		$self->{_allow_add_error} = 0;
 		if ($self->{_html}->{_errors}) {
 
 			#
 			# There's an error in the info they supplied for the current step
 			# so let's show the last step presented to them
 			#
-			$self->showtemplate($self->session("_lastsent"));
+			$self->show_template($self->session("_lastsent"));
 		}
 	}
 
 	#
 	# If we reached here, we're all good and present the action they requested
 	#
-	$self->showtemplate($self->form("_action") || $self->{initialtemplate});
+	$self->show_template($self->form("_action") || $self->{initial_template});
 
 	# Should not reach here
 	die "Something's wrong.  You should not be seeing this.\n";
@@ -742,15 +760,15 @@ sub html {
 # Pushes the value into the html element as an array
 #
 sub html_push {
-	my $self          = _getself(\@_);
-	my $key           = shift || croak "key not supplied";
-	my $value         = shift;
-	my $existingvalue = $self->{_html}->{$key} || [];
-	if (ref($existingvalue) ne "ARRAY") {
+	my $self           = _getself(\@_);
+	my $key            = shift || croak "key not supplied";
+	my $value          = shift;
+	my $existing_value = $self->{_html}->{$key} || [];
+	if (ref($existing_value) ne "ARRAY") {
 		croak "Key $key already exists as non-array. Cannot push into it.";
 	}
-	push (@{$existingvalue}, $value);
-	$self->{_html}->{$key} = $existingvalue;
+	push (@{$existing_value}, $value);
+	$self->{_html}->{$key} = $existing_value;
 	return 1;
 }
 
@@ -759,15 +777,15 @@ sub html_push {
 # Unshifts the value into the html element as an array
 #
 sub html_unshift {
-	my $self          = _getself(\@_);
-	my $key           = shift || croak "key not supplied";
-	my $value         = shift;
-	my $existingvalue = $self->{_html}->{$key} || [];
-	if (ref($existingvalue) ne "ARRAY") {
+	my $self           = _getself(\@_);
+	my $key            = shift || croak "key not supplied";
+	my $value          = shift;
+	my $existing_value = $self->{_html}->{$key} || [];
+	if (ref($existing_value) ne "ARRAY") {
 		croak "Key $key already exists as non-array. Cannot unshift into it.";
 	}
-	unshift (@{$existingvalue}, $value);
-	$self->{_html}->{$key} = $existingvalue;
+	unshift (@{$existing_value}, $value);
+	$self->{_html}->{$key} = $existing_value;
 	return 1;
 }
 
@@ -785,8 +803,21 @@ sub new {
 	my $class = shift || "CGI::Framework";
 	my %para = ref($_[0]) eq "HASH" ? %{ $_[0] } : @_;
 	my $self = {};
-	my $cookievalue;
+	my $cookie_value;
+	my $temp;
 	local (*FH);
+
+	#
+	# Backwards compatability support
+	#
+	foreach (qw(callbacks_namespace cookie_name initial_template sessions_dir templates_dir valid_languages)) {
+		$temp = $_;
+		$temp =~ s/_//g;
+		if (!exists $para{$_} && exists $para{$temp}) {
+			$para{$_} = $para{$temp};
+			delete $para{$temp};
+		}
+	}
 
 	#
 	# Some initial setup
@@ -796,24 +827,28 @@ sub new {
 	#
 	# We set some defaults if unsupplied
 	#
-	$para{validlanguages} ||= [];
-	$para{callbacksnamespace} ||= (caller)[0] || "main";
-	if (!$para{cookiename}) {
-		$para{cookiename} = "sessionid_$ENV{SCRIPT_NAME}";
-		$para{cookiename} =~ s/[^0-9a-z]//gi;
+	$para{valid_languages} ||= [];
+	$para{callbacks_namespace} ||= (caller)[0] || "main";
+	if (!$para{cookie_name}) {
+		$para{cookie_name} = "sessionid_$ENV{SCRIPT_NAME}";
+		$para{cookie_name} =~ s/[^0-9a-z]//gi;
 	}
-	if (!$para{sessionsdir}) {
+	if (!$para{sessions_mysql_dbh} && !$para{sessions_dir}) {
+
+		#
+		# They didn't supply any sessions stuff, so let's take a guess at some directories for file-based storage:
+		#
 		foreach (qw(/tmp /var/tmp c:/tmp c:/temp c:/windows/temp)) {
 			if (-d $_) {
-				$para{sessionsdir} = $_;
+				$para{sessions_dir} = $_;
 				last;
 			}
 		}
 	}
-	if (!$para{templatesdir}) {
+	if (!$para{templates_dir}) {
 		foreach (qw(./templates ../templates)) {
 			if (-d $_) {
-				$para{templatesdir} = $_;
+				$para{templates_dir} = $_;
 				last;
 			}
 		}
@@ -822,38 +857,67 @@ sub new {
 	#
 	# Now we do sanity checking
 	#
-	ref $para{validlanguages} eq "ARRAY" || croak "validlanguages must be an array ref";
-	$para{sessionsdir} || croak "sessionsdir not supplied";
-	-e $para{sessionsdir} && !-d $para{sessionsdir} && croak "$para{sessionsdir} exists but is not a directory";
-	-d $para{sessionsdir} || mkdir($para{sessionsdir}, 0700) || croak "Failed to create $para{sessionsdir}: $!";
-	open(FH, ">$para{sessionsdir}/testing") || croak "$para{sessionsdir} is not writable by me: $!";
-	close(FH);
-	unlink("$para{sessionsdir}/testing") || die "Failed to delete $para{sessionsdir}/testing : $!\n";
-	$para{templatesdir} || croak "templatesdir must be supplied";
-	-d $para{templatesdir} || croak "$para{templatesdir} does not exist or is not a directory";
-	-f "$para{templatesdir}/errors.html" || croak "Templates directory $para{templatesdir} does not contain the mandatory errors.html template";
-	$para{initialtemplate} || croak "initialtemplate not supplied";
+	ref $para{valid_languages} eq "ARRAY" || croak "valid_languages must be an array ref";
+	$para{sessions_dir} && $para{sessions_mysql_dbh} && croak "Only one of sessions_dir and sessions_mysql_dbh may be supplied";
+	if ($para{sessions_dir}) {
+
+		#
+		# Supplied (or determined) file-based sessions storage
+		#
+		-e $para{sessions_dir} && !-d $para{sessions_dir} && croak "$para{sessions_dir} exists but is not a directory";
+		-d $para{sessions_dir} || mkdir($para{sessions_dir}, 0700) || croak "Failed to create $para{sessions_dir}: $!";
+		open(FH, ">$para{sessions_dir}/testing") || croak "$para{sessions_dir} is not writable by me: $!";
+		close(FH);
+		unlink("$para{sessions_dir}/testing") || die "Failed to delete $para{sessions_dir}/testing : $!\n";
+	}
+	elsif ($para{sessions_mysql_dbh}) {
+
+		#
+		# Supplied mysql-based sessions storage
+		# Should be a reference to mysql object - but I'll just make sure it's *a* reference to something
+		#
+		ref($para{sessions_mysql_dbh}) || croak "Invalid sessions_mysql_dbh supplied";
+	}
+	else {
+		croak "Neither sessions_dir or sessions_mysql_dbh were supplied, and could not automatically determine a suitable sessions_dir";
+	}
+	$para{templates_dir} || croak "templates_dir must be supplied";
+	-d $para{templates_dir} || croak "$para{templates_dir} does not exist or is not a directory";
+	-f "$para{templates_dir}/errors.html" || croak "Templates directory $para{templates_dir} does not contain the mandatory errors.html template";
+	$para{initial_template} || croak "initial_template not supplied";
 
 	#
 	# And now some initialization
 	#
-	$self->{validlanguages}     = $para{validlanguages};
-	$self->{sessionsdir}        = $para{sessionsdir};
-	$self->{templatesdir}       = $para{templatesdir};
-	$self->{initialtemplate}    = $para{initialtemplate};
-	$self->{callbacksnamespace} = $para{callbacksnamespace};
-	$self->{_cgi}               = new CGI || die "Failed to create a new CGI instance: $! $@\n";
-	$cookievalue = $self->{_cgi}->cookie($para{cookiename}) || undef;
-	$self->{_session} = new CGI::Session("driver:File", $cookievalue, { Directory => $self->{sessionsdir} }) || die "Failed to create new CGI::Session instance: $! $@\n";
+	$self->{valid_languages}     = $para{valid_languages};
+	$self->{templates_dir}       = $para{templates_dir};
+	$self->{initial_template}    = $para{initial_template};
+	$self->{callbacks_namespace} = $para{callbacks_namespace};
+	$self->{_cgi}                = new CGI || die "Failed to create a new CGI instance: $! $@\n";
+	$cookie_value = $self->{_cgi}->cookie($para{cookie_name}) || undef;
+	if ($para{sessions_dir}) {
+
+		#
+		# File-based sessions
+		#
+		$self->{_session} = new CGI::Session("driver:File", $cookie_value, { Directory => $para{sessions_dir} }) || die "Failed to create new CGI::Session instance with file-based storage: $! $@\n";
+	}
+	else {
+
+		#
+		# Mysql-based sessions
+		#
+		$self->{_session} = new CGI::Session("driver:MySQL", $cookie_value, { Handle => $para{sessions_mysql_dbh} }) || die "Failed to create new CGI::Session instance with MySQL-based storage: $! $@\n";
+	}
 
 	if ($para{"importform"}) {
 		$self->{_cgi}->import_names($para{"importform"});
 	}
 
-	if (!$cookievalue || ($self->{_session}->id() ne $cookievalue)) {
+	if (!$cookie_value || ($self->{_session}->id() ne $cookie_value)) {
 
 		# We just created a new session - send it to the user
-		print "Set-Cookie: $para{cookiename}=", $self->{_session}->id(), "\n";
+		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), "\n";
 	}
 	$self->{_session}->expire("+15m");
 	$self->{_session}->param("_formaction", $ENV{SCRIPT_NAME});
@@ -861,8 +925,8 @@ sub new {
 	#
 	# Language handling
 	#
-	if ($self->{_cgi}->param("_lang") && scalar @{ $self->{validlanguages} }) {
-		if (grep { $self->{_cgi}->param("_lang") eq $_ } @{ $self->{validlanguages} }) {
+	if ($self->{_cgi}->param("_lang") && scalar @{ $self->{valid_languages} }) {
+		if (grep { $self->{_cgi}->param("_lang") eq $_ } @{ $self->{valid_languages} }) {
 
 			#
 			# Override session language
@@ -875,10 +939,10 @@ sub new {
 			exit;
 		}
 	}
-	elsif (scalar @{ $self->{validlanguages} } && !$self->{_session}->param("_lang")) {
+	elsif (scalar @{ $self->{valid_languages} } && !$self->{_session}->param("_lang")) {
 
 		# Set default language
-		$self->{_session}->param("_lang", $self->{validlanguages}->[0]);
+		$self->{_session}->param("_lang", $self->{valid_languages}->[0]);
 	}
 
 	#
@@ -887,6 +951,16 @@ sub new {
 	$self = bless($self, ref($class) || $class);
 	$LASTINSTANCE = $self;
 	return ($self);
+}
+
+#
+# Takes a scalar key
+# Copies that key from the form to the session
+#
+sub remember {
+	my $self = _getself(\@_);
+	my $key = shift || croak "key not supplied";
+	$self->session($key, $self->form($key));
 }
 
 #
@@ -906,11 +980,11 @@ sub session {
 # Calls pre_templatename and post_templatename appropriately
 # THEN EXITS
 #
-sub showtemplate {
+sub show_template {
 	my $self = _getself(\@_);
-	my $templatename = shift || croak "Template name not supplied";
+	my $template_name = shift || croak "Template name not supplied";
 	my $template;
-	my $contenttype;
+	my $content_type;
 	my $filename;
 	my $output;
 	my ($key, $value);
@@ -920,23 +994,23 @@ sub showtemplate {
 
 	no strict 'refs';
 
-	if (defined &{"$self->{callbacksnamespace}::pre_$templatename"}) {
+	if (defined &{"$self->{callbacks_namespace}::pre_$template_name"}) {
 
 		#
 		# Execute a pre_ for this template
 		#
-		&{"$self->{callbacksnamespace}::pre_$templatename"}($self);
+		&{"$self->{callbacks_namespace}::pre_$template_name"}($self);
 	}
 
 	#
 	# Prepare template
 	#
-	($filename, $contenttype) = $self->_get_template_details($templatename);
-	croak "Could not find template $templatename" if !$filename;
+	($filename, $content_type) = $self->_get_template_details($template_name);
+	croak "Could not find template $template_name" if !$filename;
 
 	$template = HTML::Template->new(
 		filename          => $filename,
-		path              => [ $self->{templatesdir} ],
+		path              => [ $self->{templates_dir} ],
 		associate         => [ $self->{_session}, $self->{_cgi} ],
 		die_on_bad_params => 0,
 	  )
@@ -947,7 +1021,7 @@ sub showtemplate {
 	#
 	# Implement language substitutions:
 	#
-	foreach (@{ $self->{validlanguages} }) {
+	foreach (@{ $self->{valid_languages} }) {
 		if ($self->session("_lang") eq $_) {
 			$output =~ s#<$_>(.+?)</$_>#$1#gsi;
 		}
@@ -956,8 +1030,8 @@ sub showtemplate {
 		}
 	}
 
-	print "Content-type: $contenttype\n\n";
-	if ($contenttype eq "application/x-netscape-autoconfigure-dialer") {
+	print "Content-type: $content_type\n\n";
+	if ($content_type eq "application/x-netscape-autoconfigure-dialer") {
 
 		#
 		# We're sending a netscape INS file. It needs to be formatted to binary first
@@ -976,7 +1050,7 @@ sub showtemplate {
 		# We're (probably) sending an html file. We need to substitute the cgi_framework_STUFF
 		#
 		foreach (qw(cgi_framework_header cgi_framework_footer)) {
-			$output =~ /<$_>/i || croak "Error: Cumulative templates for step $templatename does not contain the required <$_> tag";
+			$output =~ /<$_>/i || croak "Error: Cumulative templates for step $template_name does not contain the required <$_> tag";
 		}
 		$header = <<"EOM";
 	<!-- CGI::Framework BEGIN HEADER -->
@@ -1002,7 +1076,7 @@ sub showtemplate {
 	}
 	// -->
 	</script>
-	<form name="myform" method="POST" action="$ENV{SCRIPT_NAME}" onSubmit="return checksubmit();">
+	<form name="myform" method="POST" enctype="multipart/form-data" action="$ENV{SCRIPT_NAME}" onSubmit="return checksubmit();">
 	<input type="hidden" name="_action" value="">
 	<input type="hidden" name="_item" value="">
 	<input type="hidden" name="_sv" value="">
@@ -1019,14 +1093,14 @@ EOM
 
 	print $output;
 
-	if (defined &{"$self->{callbacksnamespace}::post_$templatename"}) {
+	if (defined &{"$self->{callbacks_namespace}::post_$template_name"}) {
 
 		#
 		# Execute a post_ for this template
 		#
-		&{"$self->{callbacksnamespace}::post_$templatename"}($self);
+		&{"$self->{callbacks_namespace}::post_$template_name"}($self);
 	}
-	$self->session("_lastsent", $templatename);
+	$self->session("_lastsent", $template_name);
 	exit;
 }
 
@@ -1040,27 +1114,27 @@ EOM
 # otherwise, returns undef
 sub _get_template_details {
 	my $self = _getself(\@_);
-	my $templatename = shift || croak "templatename not supplied";
+	my $template_name = shift || croak "templatename not supplied";
 	my $filename;
-	my $contenttype;
+	my $content_type;
 
-	if (-e "$self->{templatesdir}/$templatename.html") {
-		$filename    = "$templatename.html";
-		$contenttype = "text/html";
+	if (-e "$self->{templates_dir}/$template_name.html") {
+		$filename     = "$template_name.html";
+		$content_type = "text/html";
 	}
-	elsif (-e "$self->{templatesdir}/$templatename.ins") {
-		$filename = "$templatename.ins";
+	elsif (-e "$self->{templates_dir}/$template_name.ins") {
+		$filename = "$template_name.ins";
 		if ($ENV{HTTP_USER_AGENT} =~ /MSIE/i) {
-			$contenttype = "application/x-internet-signup";
+			$content_type = "application/x-internet-signup";
 		}
 		else {
-			$contenttype = "application/x-netscape-autoconfigure-dialer";
+			$content_type = "application/x-netscape-autoconfigure-dialer";
 		}
 	}
 	else {
 		return undef;
 	}
-	return wantarray ? ($filename, $contenttype) : $filename;
+	return wantarray ? ($filename, $content_type) : $filename;
 }
 
 #
@@ -1070,7 +1144,7 @@ sub _get_template_details {
 sub _missinginfo {
 	my $self = _getself(\@_);
 	if ($self->_get_template_details("missinginfo")) {
-		$self->showtemplate("missinginfo");
+		$self->show_template("missinginfo");
 	}
 	else {
 		print "Content-type: text/plain\n\n";
@@ -1109,11 +1183,11 @@ sub _getself {
 #
 sub INITIALIZENEWPROJECT {
 	my $dir = shift || die "\n\nError: You must supply a directory as the first argument\n\n";
-	my $cgidir       = "$dir/cgi-bin";
-	my $libdir       = "$dir/lib";
-	my $sessionsdir  = "$dir/sessions";
-	my $templatesdir = "$dir/templates";
-	my $publicdir    = "$dir/public_html";
+	my $cgi_dir       = "$dir/cgi-bin";
+	my $lib_dir       = "$dir/lib";
+	my $sessions_dir  = "$dir/sessions";
+	my $templates_dir = "$dir/templates";
+	my $public_dir    = "$dir/public_html";
 	local (*FH);
 	my $filename;
 	my $content;
@@ -1127,13 +1201,13 @@ sub INITIALIZENEWPROJECT {
 	#
 	# Create the directories
 	#
-	foreach ($dir, $cgidir, $libdir, $sessionsdir, $templatesdir, $publicdir) {
+	foreach ($dir, $cgi_dir, $lib_dir, $sessions_dir, $templates_dir, $public_dir) {
 		print "Creating directory $_ ";
 		mkdir($_, 0755) || die "\n\n:Error: Failed to create $_ : $!\n\n";
 		print "\n";
 	}
-	print "Changing $sessionsdir mode ";
-	chmod(0777, $sessionsdir) || die "\n\nError: Failed to chmod $sessionsdir to 777: $!\n\n";
+	print "Changing $sessions_dir mode ";
+	chmod(0777, $sessions_dir) || die "\n\nError: Failed to chmod $sessions_dir to 777: $!\n\n";
 	print "\n";
 
 	#
@@ -1141,7 +1215,7 @@ sub INITIALIZENEWPROJECT {
 	#
 	foreach (
 		[
-			"$templatesdir/header.html", 0644, <<"EOM"
+			"$templates_dir/header.html", 0644, <<"EOM"
 	<html>
 		<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<head>
@@ -1155,7 +1229,7 @@ sub INITIALIZENEWPROJECT {
 EOM
 		],
 		[
-			"$templatesdir/footer.html", 0644, <<"EOM"
+			"$templates_dir/footer.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<hr>
 	<center><font size=1>Copyright (C) 2003 ME !!!</font></center>
@@ -1167,7 +1241,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/login.html", 0644, <<"EOM"
+			"$templates_dir/login.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
 
@@ -1192,7 +1266,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/mainmenu.html", 0644, <<"EOM"
+			"$templates_dir/mainmenu.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
 
@@ -1208,7 +1282,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/youraccount.html", 0644, <<"EOM"
+			"$templates_dir/youraccount.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
 
@@ -1241,7 +1315,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/missinginfo.html", 0644, <<"EOM"
+			"$templates_dir/missinginfo.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
 
@@ -1253,7 +1327,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/errors.html", 0644, <<"EOM"
+			"$templates_dir/errors.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_IF NAME="_errors">
 		<center>
@@ -1276,7 +1350,7 @@ EOM
 EOM
 		],
 		[
-			"$templatesdir/logout.html", 0644, <<"EOM"
+			"$templates_dir/logout.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
 
@@ -1286,21 +1360,21 @@ EOM
 EOM
 		],
 		[
-			"$cgidir/hello.cgi", 0755, <<"EOM"
+			"$cgi_dir/hello.cgi", 0755, <<"EOM"
 #!$^X
 
 	# Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command
 
 	use strict;
 	use CGI::Framework;
-	use lib "$libdir";
+	use lib "$lib_dir";
 	require pre_post;
 	require validate;
 
 	my \$f = new CGI::Framework (
-		sessionsdir		=>	"$sessionsdir",
-		templatesdir		=>	"$templatesdir",
-		initialtemplate	=>	"login",
+		sessions_dir		=>	"$sessions_dir",
+		templates_dir		=>	"$templates_dir",
+		initial_template	=>	"login",
 	)
 	|| die "Failed to create a new CGI::Framework instance: \$\@\\n";
 
@@ -1311,31 +1385,31 @@ EOM
 		\$f->dispatch();
 	}
 	else {
-		\$f->showtemplate("login");
+		\$f->show_template("login");
 	}
 
 EOM
 		],
 		[
-			"$libdir/validate.pm", 0644, <<"EOM"
+			"$lib_dir/validate.pm", 0644, <<"EOM"
 
 	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
 	sub validate_login {
 		my \$f = shift;
 		if (!\$f->form("username")) {
-			\$f->adderror("You must supply your username");
+			\$f->add_error("You must supply your username");
 		}
 		if (!\$f->form("password")) {
-			\$f->adderror("You must supply your password");
+			\$f->add_error("You must supply your password");
 		}
 		if (\$f->form("username") eq "goodusername" && \$f->form("password") eq "cleverpassword") {
 			# Logged in fine
-			\$f->session("username", \$f->form("username"));
+			\$f->remember("username");
 			\$f->session("authenticated", 1);
 		}
 		elsif (\$f->form("username") && \$f->form("password")) {
-			\$f->adderror("Login failed");
+			\$f->add_error("Login failed");
 		}
 	}
 
@@ -1343,7 +1417,7 @@ EOM
 EOM
 		],
 		[
-			"$libdir/pre_post.pm", 0644, <<"EOM"
+			"$lib_dir/pre_post.pm", 0644, <<"EOM"
 
 	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
@@ -1362,7 +1436,7 @@ EOM
 			},
 			{
 				type	=>	"Laptop Rental",
-				details	=>	"SuperDuper Pentium 4 2.9Ghz",
+				details	=>	"SuperDuper Pentium 4 3.01hz",
 				amount	=>	'\$35.99',
 			},
 		);
@@ -1371,7 +1445,7 @@ EOM
 
 	sub post_logout {
 		my \$f = shift;
-		\$f->clearsession();
+		\$f->clear_session();
 	}
 
 	1;
@@ -1391,6 +1465,22 @@ EOM
 
 	print "\n\nDONE: Your stub project is now ready in $dir\n\n";
 	exit;
+}
+
+############################################################################
+#
+# OLD COMPATABILITY SUBS START HERE
+
+sub adderror {
+	return add_error(@_);
+}
+
+sub clearsession {
+	return clear_session(@_);
+}
+
+sub showtemplate {
+	return show_template(@_);
 }
 
 1;

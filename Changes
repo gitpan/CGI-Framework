@@ -1,6 +1,36 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.3 2003/05/04 14:48:07 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.4 2003/06/02 16:44:59 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.04
+	- Any methods and initializer parameters that were made up of 2 concatenated words
+	  have now been separated by an underscore.  The following are affected:
+
+	  Methods/Functions:
+	  adderror		=>	add_error
+	  clearsession	=> clear_session
+	  showtemplate	=> show_template
+
+	  Constructor/Initializer parameters:
+	  callbacksnamespace	=>	callbacks_namespace
+	  cookiename			=>	cookie_name
+	  initialtemplate		=>	initial_template
+	  sessionsdir			=>	sessions_dir
+	  templatesdir			=>	templates_dir
+	  validlanguages		=>	valid_languages
+
+	  The old names will still be available for compatability-purposes however will be
+	  phased out sometime in the future for code-cleanliness.  All existing and new
+	  programs should use the new naming convention.
+
+	- Implemented the ability to save session data in a mysql table instead of text files
+	  through a new constructor parameter sessions_mysql_dbh.
+	- Implemented a new method "remember" that is a shorthand for transferring values
+	  from the just-submitted form to the session.
+	- Changed default form enctype to "multipart/form-data" so that file-uploads can
+	  be done.  This seems to have no side-effect other than enabling file uploads to
+	  work.
+	- Some documentation and synopsis bugfixes. - Thanks to Ron Savage <rons@deakin.edu.au>
 
 0.03
 	-  Added new methods: get_cgi_object, get_cgi_session_object, html_push, html_unshift

@@ -1,6 +1,9 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.33 2004/11/24 04:28:10 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.34 2005/02/17 23:55:55 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.20
+	- Fatal error email now includes X-CGI-Framework-PID header
 
 0,19
 	- Minor bugfix - the fatal_error_template was shown to the user as

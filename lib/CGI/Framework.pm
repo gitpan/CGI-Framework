@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.125 2004/11/24 04:28:10 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.126 2005/02/17 23:55:55 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.19";
+	$VERSION     = "0.20";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -877,7 +877,7 @@ This program is free software; you can redistribute it and/or modify it under th
 
 The full text of the license can be found in the LICENSE file included with this module.
 
-Copyright (C) 2003 Mina Naguib.
+Copyright (C) 2003-2005 Mina Naguib.
 
 
 =head1 SEE ALSO
@@ -1260,6 +1260,7 @@ sub new {
 						print SMH "Subject: Fatal Error\n";
 						print SMH "X-CGI-Framework-Method: sendmail $para{sendmail}\n";
 						print SMH "X-CGI-Framework-REMOTE-ADDR: $ENV{REMOTE_ADDR}\n";
+						print SMH "X-CGI-Framework-PID: $$\n";
 						print SMH "\n";
 						print SMH "The following fatal error occurred:\n\n$error\n";
 						close(SMH);
@@ -1272,7 +1273,7 @@ sub new {
 						my $smtp = Net::SMTP->new($para{"smtp_host"}) || die "Could not create Net::SMTP object: $@\n";
 						$smtp->mail($para{"smtp_from"} || 'cgiframework@localhost') || die "Could not send MAIL command: $@\n";
 						$smtp->recipient(ref($para{"fatal_error_email"}) eq "ARRAY" ? @{ $para{"fatal_error_email"} } : $para{"fatal_error_email"}) || die "Could not send RECIPIENT command: $@\n";
-						$smtp->data("X-CGI-Framework-Method: Net::SMTP $para{smtp_host}\nX-CGI-Framework-REMOTE-ADDR: $ENV{REMOTE_ADDR}\n\nThe following fatal error occurred:\n\n$error") || die "Could not send DATA command: $@\n";
+						$smtp->data("X-CGI-Framework-Method: Net::SMTP $para{smtp_host}\nX-CGI-Framework-REMOTE-ADDR: $ENV{REMOTE_ADDR}\nX-CGI-Framework-PID: $$\n\nThe following fatal error occurred:\n\n$error") || die "Could not send DATA command: $@\n";
 						$smtp->quit();
 					};
 					$emailsent = 1 if !$@;
@@ -1866,7 +1867,7 @@ EOM
 			"$templates_dir/footer.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<hr>
-	<center><font size=1>Copyright (C) 2003 ME !!!</font></center>
+	<center><font size=1>Copyright (C) 2005 ME !!!</font></center>
 
 	<cgi_framework_footer>
 

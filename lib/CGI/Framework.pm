@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.95 2003/12/12 06:55:34 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.102 2003/12/17 13:58:06 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,13 +12,13 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = "0.10";
+	$VERSION = "0.11";
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
 
 	@EXPORT      = qw ();
-	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template);
+	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
 	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
 }
 
@@ -189,7 +189,7 @@ This directory will contain 2 important files require()ed by the CGIs, F<pre_pos
 
 =item F<templates/>
 
-This directory will contain all the templates you create.  Templates should end in the .html extension to be found by the show_template() method.  More on how you should create the actual templates in the CREATE TEMPLATES section
+This directory will contain all the templates you create.  Templates should end in the .html extension to be found by the show_template() or return_template() methods.  More on how you should create the actual templates in the CREATE TEMPLATES section
 
 =item F<sessions/>
 
@@ -334,9 +334,11 @@ It is mandatory to create a special template named F<errors.html>.  This templat
 
 =item The missing info template
 
-It is recommended, although not mandatory, to create a special template named F<missinginfo.html>.  This template will be shown to the client when an assertion made through the assert_form() or assert_session() methods fail.  It's job is to explain to the client that they're probably using a timed-out session, and invites them to start from the beginning.
+It is recommended, although not mandatory, to create a special template named F<missinginfo.html>.  This template will be shown to the client when an assertion made through the assert_form() or assert_session() methods fail.  It's job is to explain to the client that they're probably using a timed-out session or submitting templates out of logical order (possibly a cracking attempt), and invites them to start from the beginning.
 
 If this template is not found, the above error will be displayed to the client in a text mode.
+
+When this template is called due to a failed assertion by assert_form() or assert_session(), 2 special variables: _missing_info and _missing_info_caller, are available for use in the missinginfo template.  Refer to the "PRE-DEFINED TEMPLATE VARIABLES" section for details.
 
 =item The fatal error template
 
@@ -588,7 +590,7 @@ If you specified the "valid_languages" and the "maketext_class_name" keys to the
 
 =item assert_form(@array)
 
-This method accepts an array of scalar values.  Each element will be checked to make sure that it has been submitted in the just-submitted form and has a true value.  If any elements aren't found or have a false value, the missinginfo template is shown to the client.
+This method accepts an array of scalar values.  Each element will be checked to make sure that it has been submitted in the just-submitted form and has a true value.  If any elements aren't found or have a false value, the missinginfo template is shown to the client.  The missinginfo template will be passed special variables _missing_info and _missing_info_caller which you can use to display details about the failed assertions.  Refer to the "PRE-DEFINED TEMPLATE VARIABLES" section for more info.
 
 =item assert_session(@array)
 
@@ -642,13 +644,21 @@ If the second optional parameter is supplied, then that destination key is used 
 
 It is frequently used to premanently save a submitted form key+value inside the validate_templatename() sub after it has been checked for correctness.
 
+=item return_template($scalar)
+
+This method accepts a scalar template name, and returns the content parsed from that template suitable for sending to the client.  Internally it takes care of language substitution, and the <cgi_framework_header>, <cgi_framework_footer> tags.
+
+In scalar context it returns the content suitable for sending to the client.  In array context it returns the content and the content-type.
+
 =item session($scalar [, $scalar])
 
 This method accepts a scalar key as it's first argument and an optional scalar value as it's second.  If a value is supplied, it saves the key+value pair into the session for future retrieval.  If no value is supplied, it returns the previously-saved value associated with the given key.
 
 =item show_template($scalar)
 
-This method accepts a scalar template name, calls the pre_templatename() sub if found, sends the template to the client, calls the post_templatename() sub if found, then exists.  While sending the template to the client it also takes care of the <cgi_framework_header>, <cgi_framework_footer> tags, as well as the language substitutions.
+This method accepts a scalar template name, calls the pre_templatename() sub if found, sends the template to the client, calls the post_templatename() sub if found, then exists.  Internally uses the return_template() method to calculate actual content to send.
+
+Note: This method exit()s when done.  It does not return.
 
 =back
 
@@ -669,6 +679,14 @@ This variable will contain the error message that caused a fatal error.  It will
 =item _form_action
 
 This variable will contain the URL to the current CGI
+
+=item _missing_info
+
+This variable will only be available when the missinginfo template is being called from a call to assert_form() or assert_session() methods.  It's value will be an arrayref of hashes.  Each hash will have a key named "name", the value of which is the name of a key supplied to assert_form() or assert_session() that failed the assertion.  This variable can be used with L<HTML::Template>'s TMPL_LOOP macro to display the variables that failed the assertion.
+
+=item _missing_info_caller
+
+This variable will only be available when the missinginfo template is being called from a call to assert_form() or assert_session() methods.  It's value will be a scalar describing the caller of assert_form() or assert_method().
 
 =back
 
@@ -821,10 +839,17 @@ sub add_error {
 #
 sub assert_form {
 	my $self = _getself(\@_);
-	foreach (@_) {
-		$self->form($_) || $self->_missinginfo();
+	my @failed = grep { !$self->form($_) } @_;
+	if (@failed) {
+		foreach (@failed) {
+			$self->html_push("_missing_info", { "name" => $_, });
+		}
+		$self->html("_missing_info_caller", join(" -- ", caller));
+		$self->_missinginfo();
 	}
-	return 1;
+	else {
+		return 1;
+	}
 }
 
 #
@@ -834,18 +859,48 @@ sub assert_form {
 #
 sub assert_session {
 	my $self = _getself(\@_);
-	foreach (@_) {
-		$self->session($_) || $self->_missinginfo();
+	my @failed = grep { !$self->session($_) } @_;
+	if (@failed) {
+		foreach (@failed) {
+			$self->html_push("_missing_info", { "name" => $_, });
+		}
+		$self->html("_missing_info_caller", join(" -- ", caller));
+		$self->_missinginfo();
 	}
-	return 1;
+	else {
+		return 1;
+	}
 }
 
 #
 # Clears the session
 #
 sub clear_session {
-	my $self = _getself(\@_);
-	$self->{_session}->delete();
+	my $self     = _getself(\@_);
+	my %preserve = (
+		"_lastsent" => "",
+		"_lang"     => "",
+	);
+
+	#
+	# Save preserve-able values
+	#
+	foreach (keys %preserve) {
+		$preserve{$_} = $self->session($_);
+	}
+
+	#
+	# Delete all values
+	#
+	$self->{_session}->clear();
+
+	#
+	# Restore preserved values
+	#
+	foreach (keys %preserve) {
+		$self->session($_, $preserve{$_});
+	}
+
 	return 1;
 }
 
@@ -1253,23 +1308,11 @@ sub remember {
 }
 
 #
-# Takes a scalar key, and an optional value
-# Gives them to the param() method of CGI::Session
-#
-sub session {
-	my $self  = _getself(\@_);
-	my $key   = shift || croak "key not supplied";
-	my $value = shift;
-	return defined($value) ? $self->{_session}->param($key, $value) : $self->{_session}->param($key);
-}
-
-#
 # Takes a template name
-# Shows it
-# Calls pre_templatename and post_templatename appropriately
-# THEN EXITS
+# returns scalar output string containing parsed template, with lang and tags substitution
+# In array mode also returns a second element which is the content-type
 #
-sub show_template {
+sub return_template {
 	my $self = _getself(\@_);
 	my $template_name = shift || croak "Template name not supplied";
 	my $template;
@@ -1282,14 +1325,6 @@ sub show_template {
 	my $footer;
 
 	no strict 'refs';
-
-	if (defined &{"$self->{callbacks_namespace}::pre_$template_name"}) {
-
-		#
-		# Execute a pre_ for this template
-		#
-		&{"$self->{callbacks_namespace}::pre_$template_name"}($self);
-	}
 
 	#
 	# Prepare template
@@ -1326,14 +1361,6 @@ sub show_template {
 		}
 	}
 
-	print "Content-type: $content_type\n";
-	if ($self->{disable_back_button}) {
-		print "Cache-control: no-cache\n";
-		print "Pragma: no-cache\n";
-		print "Expires: Thu, 01 Dec 1994 16:00:00 GMT\n";
-	}
-	print "\n";
-
 	if ($content_type eq "application/x-netscape-autoconfigure-dialer") {
 
 		#
@@ -1347,10 +1374,10 @@ sub show_template {
 		}
 		$output = $temp;
 	}
-	else {
+	elsif ($content_type eq "text/html") {
 
 		#
-		# We're (probably) sending an html file. We need to substitute the cgi_framework_STUFF
+		# We're sending an html file. We need to substitute the cgi_framework_STUFF
 		#
 		foreach (qw(cgi_framework_header cgi_framework_footer)) {
 			$output =~ /<$_>/i || croak "Error: Cumulative templates for step $template_name does not contain the required <$_> tag";
@@ -1395,7 +1422,58 @@ EOM
 		$output =~ s/<cgi_framework_footer>/$footer/i;
 	}
 
-	print $output;
+	return wantarray ? ($output, $content_type) : $output;
+}
+
+#
+# Takes a scalar key, and an optional value
+# Gives them to the param() method of CGI::Session
+#
+sub session {
+	my $self  = _getself(\@_);
+	my $key   = shift || croak "key not supplied";
+	my $value = shift;
+	return defined($value) ? $self->{_session}->param($key, $value) : $self->{_session}->param($key);
+}
+
+#
+# Takes a template name
+# Shows it
+# Calls pre_templatename and post_templatename appropriately
+# THEN EXITS
+#
+sub show_template {
+	my $self = _getself(\@_);
+	my $template_name = shift || croak "Template name not supplied";
+	my $content;
+	my $content_type;
+
+	no strict 'refs';
+
+	if (defined &{"$self->{callbacks_namespace}::pre_$template_name"}) {
+
+		#
+		# Execute a pre_ for this template
+		#
+		&{"$self->{callbacks_namespace}::pre_$template_name"}($self);
+	}
+
+	#
+	# Parse template
+	#
+	($content, $content_type) = $self->return_template($template_name);
+
+	#
+	# Send content
+	#
+	print "Content-type: $content_type\n";
+	if ($self->{disable_back_button}) {
+		print "Cache-control: no-cache\n";
+		print "Pragma: no-cache\n";
+		print "Expires: Thu, 01 Dec 1994 16:00:00 GMT\n";
+	}
+	print "\n";
+	print $content;
 
 	if (defined &{"$self->{callbacks_namespace}::post_$template_name"}) {
 
@@ -1404,6 +1482,7 @@ EOM
 		#
 		&{"$self->{callbacks_namespace}::post_$template_name"}($self);
 	}
+
 	$self->session("_lastsent", $template_name);
 	exit;
 }
@@ -1479,6 +1558,10 @@ sub _get_template_details {
 		else {
 			$content_type = "application/x-netscape-autoconfigure-dialer";
 		}
+	}
+	elsif (-e "$self->{templates_dir}/$template_name.txt") {
+		$filename     = "$template_name.txt";
+		$content_type = "text/plain";
 	}
 	else {
 		return undef;
@@ -1668,6 +1751,22 @@ EOM
 			"$templates_dir/missinginfo.html", 0644, <<"EOM"
 	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
 	<TMPL_INCLUDE NAME="header.html">
+
+
+
+	<!--
+
+	DEBUGGING INFO:
+
+	CALLER: <TMPL_VAR NAME="_missing_info_caller">
+
+	<TMPL_LOOP "_missing_info">
+	FAILED ASSERTION: <TMPL_VAR NAME="name">
+	</TMPL_LOOP>
+
+	// -->
+
+
 
 	<font color=red>PROBLEM:</font>
 

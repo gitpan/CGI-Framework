@@ -1,6 +1,13 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.12 2003/12/12 07:06:07 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.15 2003/12/17 04:31:52 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.11
+	- Implemented new method: return_template()
+	- Implemented 2 new special variables: _missing_info and
+	  _missing_info_caller
+   - Calling the clear_session() method will now preserve
+	  the internal _lang and _lastsent variables
 
 0.10
    - Implemented new logic that fixes problem of the framework validating

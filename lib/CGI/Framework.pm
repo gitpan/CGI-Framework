@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.36 2003/05/03 03:44:07 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.49 2003/05/04 14:48:07 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -11,19 +11,19 @@ use CGI::Carp qw(fatalsToBrowser);
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.02;
+	$VERSION = 0.03;
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
 
 	@EXPORT      = qw ();
-	@EXPORT_OK   = qw (initialize_cgi_framework form html session showtemplate adderror dispatch assert_form assert_session clearsession);
-	%EXPORT_TAGS = ('nooop' => [qw(initialize_cgi_framework form html session showtemplate adderror dispatch assert_form assert_session clearsession)],);
+	@EXPORT_OK   = qw (adderror assert_form assert_session clearsession dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework session showtemplate);
+	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
 }
 
 =head1 NAME
 
-CGI::Framework - A simple-to-use web CGI framework
+CGI::Framework - A simple-to-use, lightweight web CGI framework
 
 It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic :)
 
@@ -90,7 +90,7 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
 
 =head1 DESCRIPTION
 
-CGI::Framework is a simple framework for building web-based CGI applications.  It features complete code-content separation by utilizing the HTML::Template library, stateful sessions by utilizing the CGI::Session library, form parsing by utilizing the CGI library, (optional) multi-lingual templates support, and an extremely easy to use methodology for the validation, pre-preparation and post-cleanup associated with each template.
+CGI::Framework is a simple and lightweight framework for building web-based CGI applications.  It features complete code-content separation by utilizing the HTML::Template library, stateful sessions by utilizing the CGI::Session library, form parsing by utilizing the CGI library, (optional) multi-lingual templates support, and an extremely easy to use methodology for the validation, pre-preparation and post-cleanup associated with each template.
 
 =head1 CONCEPTUAL OVERVIEW
 
@@ -395,7 +395,7 @@ As the examples show, this is the object-way of doing things:
 	use CGI::Framework;
 
 	my $instance = new CGI::Framework (
-		this	=> that,
+		this	=>	that,
 		foo	=>	bar,
 	);
 
@@ -444,13 +444,13 @@ The function-based way is very similar (and slightly less cumbersome to use due 
 
 =back
 
-=head1 THE CONSTRUCTOR
+=head1 THE CONSTRUCTOR / INITIALIZER
 
 =over 4
 
 =item new(%hash)
 
-This constructor will return a new CGI::Framework instance.  It accepts a hash with the following keys:
+This is the standard object-oriented constructor.  When called, will return a new CGI::Framework instance.  It accepts a hash with the following keys:
 
 =over 4
 
@@ -462,11 +462,31 @@ This key should have a scalar value with the name of the namespace that you will
 
 The main use of this option is to allow you, if you so choose, to place your callbacks subs into any arbitrary namespace you decide on (to avoid pollution of your main namespace for example).
 
+=item cookiename
+
+B<OPTIONAL>
+
+This key should have a scalar value with the name of the cookie to use when communicating the session ID to the client.  If not supplied, will default to "sessionid_" and a simplified representation of the URL.
+
 =item initialtemplate
 
 B<MANDATORY>
 
-This key should have a scalar value with the name of the first template that will be showed to the client.
+This key should have a scalar value with the name of the first template that will be shown to the client when the dispatch() method is called.
+
+=item importform
+
+B<OPTIONAL>
+
+This variable should have a scalar value with the name of a namespace in it.   It imports all the values of the just-submitted form into the specified namespace.  For example:
+
+	importform	=>	"FORM",
+
+You can then use form elements like:
+
+	$error = "Sorry $FORM::firstname, you may not $FORM::action at this time.";
+
+It provides a more flexible alternative to using the form() method since it can be interpolated inside double-quoted strings, however costs more memory.  I am also unsure about how such a namespace would be handled under mod_perl and if it'll remain persistent or not, possibly causing problems.
 
 =item sessionsdir
 
@@ -488,9 +508,13 @@ This key should have an arrayref value.  The array should contain all the possib
 
 =back
 
+=item initialize_cgi_framework(%hash)
+
+Just like the above new() constructor, except used in the function-based approach instead of the object-oriented approach.
+
 =back
 
-=head1 METHODS
+=head1 METHODS / FUNCTIONS
 
 =over 4
 
@@ -518,9 +542,25 @@ This method is the central dispatcher.  It calls validate_templatename on the ju
 
 This method accepts an optional scalar as it's first argument, and returns the value associated with that key from the just-submitted form from the client.  If no scalar is supplied, returns all entries from the just-submitted form.
 
+=item get_cgi_object
+
+Returns the underlying CGI object.  To be used if you'd like to do anything fancy this module doesn't provide methods for, such as processing extra cookies, etc...
+
+=item get_cgi_session_object
+
+Returns the underlying CGI::Session object.  To be used if you'd like to do anything fancy this module doesn't provide methods for.
+
 =item html($scalar, $scalar)
 
 This method accepts a scalar key as it's first argument and a scalar value as it's second.  It associates the key with the value in the upcoming template.  This method is typically called inside a pre_template() subroutine to prepare some dynamic variables/loops/etc in the templatename template.
+
+=item html_push($scalar, $scalar)
+
+Very similar to the above html() method, except it treats the key's value as an arrayref (creates it as an arrayref if it didn't exist), and push()es the value into that array.  This method is typically used to append to a key that will be used in a template loop with HTML::Template's <TMPL_LOOP> tag, the value in which case is normally a hashref.
+
+=item html_unshift($scalar, $scalar)
+
+Very similar to the above html_push() method, except it unshift()s instead of push()es the value.
 
 =item session($scalar [, $scalar])
 
@@ -569,6 +609,174 @@ Copyright (C) 2003 Mina Naguib.
 L<HTML::Template>, L<CGI::Session>, L<CGI>.
 
 =cut
+
+#
+# Takes a scalar
+# Adds it to the errors que
+#
+sub adderror {
+	my $self = _getself(\@_);
+	$self->{_allowadderror} || croak "Cannot call adderror at this time";
+	my $error = shift || croak "Error not supplied";
+	my $existingerrors = $self->{_html}->{_errors} || [];
+	push (@$existingerrors, { error => $error, });
+	$self->{_html}->{_errors} = $existingerrors;
+	return 1;
+}
+
+#
+# This sub asserts that the key(s) supplied to it exists in the submitted form
+# If the value is not true, it calls showtemplate with "missinginfo"
+# It's mostly used by the subs in pre_post* to validate that the values they need exist
+#
+sub assert_form {
+	my $self = _getself(\@_);
+	foreach (@_) {
+		$self->form($_) || $self->_missinginfo();
+	}
+	return 1;
+}
+
+#
+# This sub asserts that the key(s) supplied to it exists in the session
+# If the value is not true, it calls showtemplate with "missinginfo"
+# It's mostly used by the subs in pre_post* to validate that the values they need exist
+#
+sub assert_session {
+	my $self = _getself(\@_);
+	foreach (@_) {
+		$self->session($_) || $self->_missinginfo();
+	}
+	return 1;
+}
+
+#
+# Clears the session
+#
+sub clearsession {
+	my $self = _getself(\@_);
+	$self->{_session}->delete();
+	return 1;
+}
+
+#
+# This sub takes care of calling any validate_XYZ methods, displaying old page or requested page
+# based on whether there were errors or not
+#
+sub dispatch {
+	my $self = _getself(\@_);
+
+	no strict 'refs';
+
+	#
+	# Validate the data entered:
+	#
+	#	if ($self->form("sv") && !grep { $_ eq $self->form("action") } @FORCEVALIDATEACTION) {
+	if ($self->form("_sv")) {
+
+		#We skip validation as per requested
+	}
+	elsif (defined &{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }) {
+		$self->{_allowadderror} = 1;
+		&{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }($self);
+		$self->{_allowadderror} = 0;
+		if ($self->{_html}->{_errors}) {
+
+			#
+			# There's an error in the info they supplied for the current step
+			# so let's show the last step presented to them
+			#
+			$self->showtemplate($self->session("_lastsent"));
+		}
+	}
+
+	#
+	# If we reached here, we're all good and present the action they requested
+	#
+	$self->showtemplate($self->form("_action") || $self->{initialtemplate});
+
+	# Should not reach here
+	die "Something's wrong.  You should not be seeing this.\n";
+}
+
+#
+# Takes a scalar key
+# Returns the value for that key from the just-submitted form
+#
+sub form {
+	my $self = _getself(\@_);
+	my $key  = shift;
+	return length($key) ? $self->{_cgi}->param($key) : $self->{_cgi}->param();
+}
+
+#
+# Returns the CGI object
+#
+sub get_cgi_object {
+	my $self = _getself(\@_);
+	return $self->{_cgi};
+}
+
+#
+# Returns the CGI::Session object
+#
+sub get_cgi_session_object {
+	my $self = _getself(\@_);
+	return $self->{_session};
+}
+
+#
+# Takes a scalar key and a scalar value
+# Adds them to the html que
+#
+sub html {
+	my $self  = _getself(\@_);
+	my $key   = shift || croak "key not supplied";
+	my $value = shift;
+	$self->{_html}->{$key} = $value;
+	return 1;
+}
+
+#
+# Takes a scalar key and a scalar value
+# Pushes the value into the html element as an array
+#
+sub html_push {
+	my $self          = _getself(\@_);
+	my $key           = shift || croak "key not supplied";
+	my $value         = shift;
+	my $existingvalue = $self->{_html}->{$key} || [];
+	if (ref($existingvalue) ne "ARRAY") {
+		croak "Key $key already exists as non-array. Cannot push into it.";
+	}
+	push (@{$existingvalue}, $value);
+	$self->{_html}->{$key} = $existingvalue;
+	return 1;
+}
+
+#
+# Takes a scalar key and a scalar value
+# Unshifts the value into the html element as an array
+#
+sub html_unshift {
+	my $self          = _getself(\@_);
+	my $key           = shift || croak "key not supplied";
+	my $value         = shift;
+	my $existingvalue = $self->{_html}->{$key} || [];
+	if (ref($existingvalue) ne "ARRAY") {
+		croak "Key $key already exists as non-array. Cannot unshift into it.";
+	}
+	unshift (@{$existingvalue}, $value);
+	$self->{_html}->{$key} = $existingvalue;
+	return 1;
+}
+
+#
+# An alias to new(), to be used in nooop mode
+#
+sub initialize_cgi_framework {
+	return new("CGI::Framework", @_);
+}
 
 #
 # The constructor.  Initializes pretty much everything, returns a new bless()ed instance
@@ -638,6 +846,10 @@ sub new {
 	$cookievalue = $self->{_cgi}->cookie($para{cookiename}) || undef;
 	$self->{_session} = new CGI::Session("driver:File", $cookievalue, { Directory => $self->{sessionsdir} }) || die "Failed to create new CGI::Session instance: $! $@\n";
 
+	if ($para{"importform"}) {
+		$self->{_cgi}->import_names($para{"importform"});
+	}
+
 	if (!$cookievalue || ($self->{_session}->id() ne $cookievalue)) {
 
 		# We just created a new session - send it to the user
@@ -675,35 +887,6 @@ sub new {
 	$self = bless($self, ref($class) || $class);
 	$LASTINSTANCE = $self;
 	return ($self);
-}
-
-#
-# An alias to new(), to be used in nooop mode
-#
-sub initialize_cgi_framework {
-	return new("CGI::Framework", @_);
-}
-
-#
-# Takes a scalar key
-# Returns the value for that key from the just-submitted form
-#
-sub form {
-	my $self = _getself(\@_);
-	my $key = shift;
-	return length($key) ? $self->{_cgi}->param($key) : $self->{_cgi}->param();
-}
-
-#
-# Takes a scalar key and a scalar value
-# Adds them to the html que
-#
-sub html {
-	my $self  = _getself(\@_);
-	my $key   = shift || croak "key not supplied";
-	my $value = shift;
-	$self->{_html}->{$key} = $value;
-	return 1;
 }
 
 #
@@ -796,34 +979,34 @@ sub showtemplate {
 			$output =~ /<$_>/i || croak "Error: Cumulative templates for step $templatename does not contain the required <$_> tag";
 		}
 		$header = <<"EOM";
-<!-- CGI::Framework BEGIN HEADER -->
-<script language="JavaScript">
-<!--
-function process(a,i,sv) {
-	document.myform._action.value=a;
-	if (i != null) {
-		document.myform._item.value=i;
+	<!-- CGI::Framework BEGIN HEADER -->
+	<script language="JavaScript">
+	<!--
+	function process(a,i,sv) {
+		document.myform._action.value=a;
+		if (i != null) {
+			document.myform._item.value=i;
+		}
+		if (sv != null) {
+			document.myform._sv.value=sv;
+		}
+		document.myform.submit();
 	}
-	if (sv != null) {
-		document.myform._sv.value=sv;
+	function checksubmit() {
+		if (document.myform._action.value == "") {
+			return false;
+		}
+		else {
+			return true;
+		}
 	}
-	document.myform.submit();
-}
-function checksubmit() {
-	if (document.myform._action.value == "") {
-		return false;
-	}
-	else {
-		return true;
-	}
-}
-// -->
-</script>
-<form name="myform" method="POST" action="$ENV{SCRIPT_NAME}" onSubmit="return checksubmit();">
-<input type="hidden" name="_action" value="">
-<input type="hidden" name="_item" value="">
-<input type="hidden" name="_sv" value="">
-<!-- CGI::Framework END HEADER -->
+	// -->
+	</script>
+	<form name="myform" method="POST" action="$ENV{SCRIPT_NAME}" onSubmit="return checksubmit();">
+	<input type="hidden" name="_action" value="">
+	<input type="hidden" name="_item" value="">
+	<input type="hidden" name="_sv" value="">
+	<!-- CGI::Framework END HEADER -->
 EOM
 		$footer = <<"EOM";
 <!-- CGI::Framework BEGIN FOOTER -->
@@ -845,95 +1028,6 @@ EOM
 	}
 	$self->session("_lastsent", $templatename);
 	exit;
-}
-
-#
-# Takes a scalar
-# Adds it to the errors que
-#
-sub adderror {
-	my $self = _getself(\@_);
-	$self->{_allowadderror} || croak "Cannot call adderror at this time";
-	my $error = shift || croak "Error not supplied";
-	my $existingerrors = $self->{_html}->{_errors} || [];
-	push (@$existingerrors, { error => $error, });
-	$self->{_html}->{_errors} = $existingerrors;
-	return 1;
-}
-
-#
-# This sub takes care of calling any validate_XYZ methods, displaying old page or requested page
-# based on whether there were errors or not
-#
-sub dispatch {
-	my $self = _getself(\@_);
-
-	no strict 'refs';
-
-	#
-	# Validate the data entered:
-	#
-	#	if ($self->form("sv") && !grep { $_ eq $self->form("action") } @FORCEVALIDATEACTION) {
-	if ($self->form("_sv")) {
-
-		#We skip validation as per requested
-	}
-	elsif (defined &{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }) {
-		$self->{_allowadderror} = 1;
-		&{ "$self->{callbacksnamespace}::validate_" . $self->session("_lastsent") }($self);
-		$self->{_allowadderror} = 0;
-		if ($self->{_html}->{_errors}) {
-
-			#
-			# There's an error in the info they supplied for the current step
-			# so let's show the last step presented to them
-			#
-			$self->showtemplate($self->session("_lastsent"));
-		}
-	}
-		
-	#
-	# If we reached here, we're all good and present the action they requested
-	#
-	$self->showtemplate($self->form("_action") || $self->{initialtemplate});
-
-	# Should not reach here
-	die "Something's wrong.  You should not be seeing this.\n";
-}
-
-#
-# This sub asserts that the key(s) supplied to it exists in the session
-# If the value is not true, it calls showtemplate with "missinginfo"
-# It's mostly used by the subs in pre_post* to validate that the values they need exist
-#
-sub assert_session {
-	my $self = _getself(\@_);
-	foreach (@_) {
-		$self->session($_) || $self->_missinginfo();
-	}
-	return 1;
-}
-
-#
-# This sub asserts that the key(s) supplied to it exists in the submitted form
-# If the value is not true, it calls showtemplate with "missinginfo"
-# It's mostly used by the subs in pre_post* to validate that the values they need exist
-#
-sub assert_form {
-	my $self = _getself(\@_);
-	foreach (@_) {
-		$self->form($_) || $self->_missinginfo();
-	}
-	return 1;
-}
-
-#
-# Clears the session
-#
-sub clearsession {
-	my $self = _getself(\@_);
-	$self->{_session}->delete();
-	return 1;
 }
 
 ############################################################################
@@ -1048,175 +1142,175 @@ sub INITIALIZENEWPROJECT {
 	foreach (
 		[
 			"$templatesdir/header.html", 0644, <<"EOM"
-<html>
-	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<head>
-	<title>Welcome to my page</title>
-</head>
-<body bgcolor=silver text=navy link=orange alink=orange vlink=orange>
+	<html>
+		<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<head>
+		<title>Welcome to my page</title>
+	</head>
+	<body bgcolor=silver text=navy link=orange alink=orange vlink=orange>
 
-<cgi_framework_header>
+	<cgi_framework_header>
 
-<TMPL_INCLUDE NAME="errors.html">
+	<TMPL_INCLUDE NAME="errors.html">
 EOM
 		],
 		[
 			"$templatesdir/footer.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<hr>
-<center><font size=1>Copyright (C) 2003 ME !!!</font></center>
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<hr>
+	<center><font size=1>Copyright (C) 2003 ME !!!</font></center>
 
-<cgi_framework_footer>
+	<cgi_framework_footer>
 
-</body>
-</html>
+	</body>
+	</html>
 EOM
 		],
 		[
 			"$templatesdir/login.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_INCLUDE NAME="header.html">
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_INCLUDE NAME="header.html">
 
-The time is now: <TMPL_VAR NAME="currenttime">
-<p>
+	The time is now: <TMPL_VAR NAME="currenttime">
+	<p>
 
-<b>Enter your username:</b>
-<br>
-<input type="text" name="username" value="<TMPL_VAR NAME="username" ESCAPE=HTML>">
+	<b>Enter your username:</b>
+	<br>
+	<input type="text" name="username" value="<TMPL_VAR NAME="username" ESCAPE=HTML>">
 
-<p>
+	<p>
 
-<b>Enter your password:</b>
-<br>
-<input type="password" name="password" value="<TMPL_VAR NAME="password" ESCAPE=HTML>">
+	<b>Enter your password:</b>
+	<br>
+	<input type="password" name="password" value="<TMPL_VAR NAME="password" ESCAPE=HTML>">
 
-<p>
+	<p>
 
-<input type="button" value=" login &gt;&gt; " onclick="process('mainmenu');">
+	<input type="button" value=" login &gt;&gt; " onclick="process('mainmenu');">
 
-<TMPL_INCLUDE NAME="footer.html">
+	<TMPL_INCLUDE NAME="footer.html">
 EOM
 		],
 		[
 			"$templatesdir/mainmenu.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_INCLUDE NAME="header.html">
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_INCLUDE NAME="header.html">
 
-<b>Welcome <TMPL_VAR NAME="username"></b>
-<p>
-Please select from the main menu:
-<UL>
-	<LI> <a href="#" onclick="process('youraccount');"> View your account details</a>
-	<LI> <a href="#" onclick="process('logout');"> Log out</a>
-</UL>
+	<b>Welcome <TMPL_VAR NAME="username"></b>
+	<p>
+	Please select from the main menu:
+	<UL>
+		<LI> <a href="#" onclick="process('youraccount');"> View your account details</a>
+		<LI> <a href="#" onclick="process('logout');"> Log out</a>
+	</UL>
 
-<TMPL_INCLUDE NAME="footer.html">
+	<TMPL_INCLUDE NAME="footer.html">
 EOM
 		],
 		[
 			"$templatesdir/youraccount.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_INCLUDE NAME="header.html">
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_INCLUDE NAME="header.html">
 
-<b>Your account details:</b>
-<p>
-Username: <b><TMPL_VAR NAME="username"></b>
-<p>
-Your services:
-<br>
-<table>
-	<tr>
-		<th align=left>Type</th>
-		<th align=left>Details</th>
-		<th align=left>Amount Due</th>
-	</tr>
-<TMPL_LOOP NAME="services">
-	<tr>
-		<td><TMPL_VAR NAME="type"></td>
-		<td><TMPL_VAR NAME="details"></td>
-		<td><TMPL_VAR NAME="amount"></td>
-	</tr>
-</TMPL_LOOP>
-</table>
+	<b>Your account details:</b>
+	<p>
+	Username: <b><TMPL_VAR NAME="username"></b>
+	<p>
+	Your services:
+	<br>
+	<table>
+		<tr>
+			<th align=left>Type</th>
+			<th align=left>Details</th>
+			<th align=left>Amount Due</th>
+		</tr>
+	<TMPL_LOOP NAME="services">
+		<tr>
+			<td><TMPL_VAR NAME="type"></td>
+			<td><TMPL_VAR NAME="details"></td>
+			<td><TMPL_VAR NAME="amount"></td>
+		</tr>
+	</TMPL_LOOP>
+	</table>
 
-<p>
+	<p>
 
-<input type="button" value=" &lt;&lt; back to main menu " onclick="process('mainmenu');">
+	<input type="button" value=" &lt;&lt; back to main menu " onclick="process('mainmenu');">
 
-<TMPL_INCLUDE NAME="footer.html">
+	<TMPL_INCLUDE NAME="footer.html">
 EOM
 		],
 		[
 			"$templatesdir/missinginfo.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_INCLUDE NAME="header.html">
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_INCLUDE NAME="header.html">
 
-<font color=red>PROBLEM:</font>
+	<font color=red>PROBLEM:</font>
 
-It appears that your session is missing some information.  This is usually because you've just attempted to submit a session that has timed-out.  Please <a href="<TMPL_VAR NAME="_formaction" ESCAPE=HTML>">click here</a> to go to the beginning.
+	It appears that your session is missing some information.  This is usually because you've just attempted to submit a session that has timed-out.  Please <a href="<TMPL_VAR NAME="_formaction" ESCAPE=HTML>">click here</a> to go to the beginning.
 
-<TMPL_INCLUDE NAME="footer.html">
+	<TMPL_INCLUDE NAME="footer.html">
 EOM
 		],
 		[
 			"$templatesdir/errors.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_IF NAME="_errors">
-	<center>
-	<table width=80% border=0 cellspacing=0 cellpadding=5 style="border-style:solid;border-width:1px;border-color:#CC0000;">
-	<tr>
-		<td valign=top align=left>
-			<font color=red><b>The following ERRORS have occurred:</b></font>
-			<blockquote>
-				<TMPL_LOOP NAME="_errors">
-					* <TMPL_VAR NAME="error"><br>
-				</TMPL_LOOP>
-			</blockquote>
-			<font color=red>Please correct below and try again.</font>
-		</td>
-	</tr>
-	</table>
-	</center>
-	<p>
-</TMPL_IF>
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_IF NAME="_errors">
+		<center>
+		<table width=80% border=0 cellspacing=0 cellpadding=5 style="border-style:solid;border-width:1px;border-color:#CC0000;">
+		<tr>
+			<td valign=top align=left>
+				<font color=red><b>The following ERRORS have occurred:</b></font>
+				<blockquote>
+					<TMPL_LOOP NAME="_errors">
+						* <TMPL_VAR NAME="error"><br>
+					</TMPL_LOOP>
+				</blockquote>
+				<font color=red>Please correct below and try again.</font>
+			</td>
+		</tr>
+		</table>
+		</center>
+		<p>
+	</TMPL_IF>
 EOM
 		],
 		[
 			"$templatesdir/logout.html", 0644, <<"EOM"
-<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
-<TMPL_INCLUDE NAME="header.html">
+	<!-- Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command -->
+	<TMPL_INCLUDE NAME="header.html">
 
-<b>You have been successfully logged out.</b>
+	<b>You have been successfully logged out.</b>
 
-<TMPL_INCLUDE NAME="footer.html">
+	<TMPL_INCLUDE NAME="footer.html">
 EOM
 		],
 		[
 			"$cgidir/hello.cgi", 0755, <<"EOM"
 #!$^X
 
-# Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command
+	# Stub CGI created by CGI::Framework's INITIALIZENEWPROJECT command
 
-  use strict;
-  use CGI::Framework;
-  use lib "$libdir";
-  require pre_post;
-  require validate;
-  
-  my \$f = new CGI::Framework (
-	  sessionsdir		=>	"$sessionsdir",
-	  templatesdir		=>	"$templatesdir",
-	  initialtemplate	=>	"login",
-  )
-  || die "Failed to create a new CGI::Framework instance: \$\@\\n";
+	use strict;
+	use CGI::Framework;
+	use lib "$libdir";
+	require pre_post;
+	require validate;
 
-  #
-  # Unless they've successfully logged in, keep showing the login page
-  #
-  if (\$f->session("authenticated") || \$f->form("_action") eq "mainmenu") {
-	  \$f->dispatch();
-  }
-  else {
+	my \$f = new CGI::Framework (
+		sessionsdir		=>	"$sessionsdir",
+		templatesdir		=>	"$templatesdir",
+		initialtemplate	=>	"login",
+	)
+	|| die "Failed to create a new CGI::Framework instance: \$\@\\n";
+
+	#
+	# Unless they've successfully logged in, keep showing the login page
+	#
+	if (\$f->session("authenticated") || \$f->form("_action") eq "mainmenu") {
+		\$f->dispatch();
+	}
+	else {
 		\$f->showtemplate("login");
 	}
 
@@ -1224,61 +1318,63 @@ EOM
 		],
 		[
 			"$libdir/validate.pm", 0644, <<"EOM"
-# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
-sub validate_login {
-	my \$f = shift;
-	if (!\$f->form("username")) {
-		\$f->adderror("You must supply your username");
-	}
-	if (!\$f->form("password")) {
-		\$f->adderror("You must supply your password");
-	}
-	if (\$f->form("username") eq "goodusername" && \$f->form("password") eq "cleverpassword") {
-		# Logged in fine
-		\$f->session("username", \$f->form("username"));
-		\$f->session("authenticated", 1);
-	}
-	elsif (\$f->form("username") && \$f->form("password")) {
-		\$f->adderror("Login failed");
-	}
-}
+	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
-1;
+	sub validate_login {
+		my \$f = shift;
+		if (!\$f->form("username")) {
+			\$f->adderror("You must supply your username");
+		}
+		if (!\$f->form("password")) {
+			\$f->adderror("You must supply your password");
+		}
+		if (\$f->form("username") eq "goodusername" && \$f->form("password") eq "cleverpassword") {
+			# Logged in fine
+			\$f->session("username", \$f->form("username"));
+			\$f->session("authenticated", 1);
+		}
+		elsif (\$f->form("username") && \$f->form("password")) {
+			\$f->adderror("Login failed");
+		}
+	}
+
+	1;
 EOM
 		],
 		[
 			"$libdir/pre_post.pm", 0644, <<"EOM"
-# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
-sub pre_login {
-	my \$f = shift;
-	\$f->html("currenttime", scalar localtime(time));
-}
+	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
 
-sub pre_youraccount {
-	my \$f = shift;
-	my \@services = (
-		{
-			type	=>	"Cell Phone",
-			details	=>	"(514) 123-4567",
-			amount	=>	'\$25.00',
-		},
-		{
-			type	=>	"Laptop Rental",
-			details	=>	"SuperDuper Pentium 4 2.9Ghz",
-			amount	=>	'\$35.99',
-		},
-	);
-	\$f->html("services", \\\@services);
-}
+	sub pre_login {
+		my \$f = shift;
+		\$f->html("currenttime", scalar localtime(time));
+	}
 
-sub post_logout {
-	my \$f = shift;
-	\$f->clearsession();
-}
+	sub pre_youraccount {
+		my \$f = shift;
+		my \@services = (
+			{
+				type	=>	"Cell Phone",
+				details	=>	"(514) 123-4567",
+				amount	=>	'\$25.00',
+			},
+			{
+				type	=>	"Laptop Rental",
+				details	=>	"SuperDuper Pentium 4 2.9Ghz",
+				amount	=>	'\$35.99',
+			},
+		);
+		\$f->html("services", \\\@services);
+	}
 
-1;
+	sub post_logout {
+		my \$f = shift;
+		\$f->clearsession();
+	}
+
+	1;
 EOM
 		],
 	  )

@@ -1,6 +1,11 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.2 2003/05/03 03:44:07 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.3 2003/05/04 14:48:07 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.03
+	-  Added new methods: get_cgi_object, get_cgi_session_object, html_push, html_unshift
+	-  Added new constructor option, importform
+	-  Documentation fixes and elaborations
 
 0.02
 	-  Initial release

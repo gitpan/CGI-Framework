@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.124 2004/11/23 00:28:02 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.125 2004/11/24 04:28:10 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.18";
+	$VERSION     = "0.19";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -1224,6 +1224,32 @@ sub new {
 				}
 
 				#
+				# Show something back to the web user regarding the error
+				# We do this first BEFORE sending off emails because under mod_perl, an open() to a pipe (sendmail) sends some
+				# crap to the browser - FIXME - NEEDS INVESTIGATING
+				#
+				if ($para{"fatal_error_template"}) {
+					eval {
+						$self->{_html}->{_fatal_error} = $error;
+						$self->show_template($para{"fatal_error_template"});
+					};
+					if (!$@) {
+						$errorsent = 1;
+					}
+					elsif ($@ =~ /mod_?perl/i && $@ =~ /exit/i) {
+
+						#
+						# Under mod_perl, an exit() (deep in finalize()) called inside an eval (above) gets thrown and therefore caught above
+						# so we treat it as success
+						#
+						$errorsent = 1;
+					}
+				}
+				if (!$errorsent) {
+					print "Content-type: text/html\n\n<h1>The following fatal error occurred:</h1><p><pre>$error</pre>\n";
+				}
+
+				#
 				# Now try to send the fatal error email
 				#
 				if (!$emailsent && $para{"fatal_error_email"} && $para{"sendmail"}) {
@@ -1253,28 +1279,8 @@ sub new {
 				}
 
 				#
-				# Now show something back to the web user regarding the error
+				# Finally cleanup cruft:
 				#
-				if ($para{"fatal_error_template"}) {
-					eval {
-						$self->{_html}->{_fatal_error} = $error;
-						$self->show_template($para{"fatal_error_template"});
-					};
-					if (!$@) {
-						$errorsent = 1;
-					}
-					elsif ($@ =~ /mod_?perl/i && $@ =~ /exit/i) {
-
-						#
-						# Under mod_perl, an exit() (deep in finalize()) called inside an eval (above) gets thrown and therefore caught above
-						# so we treat it as success
-						#
-						$errorsent = 1;
-					}
-				}
-				if (!$errorsent) {
-					print "<h1>The following fatal error occurred:</h1><p>$error\n";
-				}
 				$self->finalize();
 			}
 		);

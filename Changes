@@ -1,6 +1,11 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.32 2004/11/23 00:28:02 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.33 2004/11/24 04:28:10 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0,19
+	- Minor bugfix - the fatal_error_template was shown to the user as
+	  text/plain instead of text/html if application was running under
+	  mod_perl and sendmail was used to email fatal error messages.
 
 0.18
 	- pre__pre__all(), pre__post__all(), post__pre__all() and

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.102 2003/12/17 13:58:06 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.104 2004/01/07 02:40:18 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = "0.11";
+	$VERSION = "0.12";
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
@@ -158,6 +158,28 @@ This sub will be called right before the template templatename is sent to the br
 =item post_templatename()
 
 This sub will be called right after the template templatename has been sent to the browser and right before the CGI exits.  It's job is to do any clean-up necessary after displaying that template.  For example, on a final-logout template, this sub could call the clear_session() method to delete any sensitive information.
+
+=back
+
+There are also 4 special sub names you can create:
+
+=over 4
+
+=item pre__pre__all()
+
+This sub will be called before any template is sent (and before pre_templatename() is called).  It is rarely needed to write or use such a sub.
+
+=item post__pre__all()
+
+This sub will be called before any template is sent (and after pre_templatename() is called).  It is rarely needed to write or use such a sub.
+
+=item pre__post__all()
+
+This sub will be called after any template is sent (and before post_templatename() is called).  It is rarely needed to write or use such a sub.
+
+=item post__post__all()
+
+This sub will be called after any template is sent (and after post_templatename() is called).  It is rarely needed to write or use such a sub.
 
 =back
 
@@ -354,6 +376,8 @@ For each template you created, you might need to write a pre_templatename() sub,
 
 For clarity and consistency purposes, the pre_templatename() and post_templatename() subs should go into the F<pre_post.pm> file, and the validate_templatename() subs should go into the F<validate.pm> file.
 
+There are also 4 special sub names.  pre__pre__all(), post__pre__all(), pre__post__all() and post__post__all().  If you create these subs, they will be called before pre_templatename(), after pre_templatename(), before post_templatename() and after post_templatename() respectively for all templates.
+
 =item WRITE YOUR CGI
 
 Copying the SYNOPSIS into a new CGI file in the F<cgi-bin/> directory is usually all that's needed unless you have some advanced requirements such as making sure the user is authenticated first before allowing them access to certain templates.
@@ -460,7 +484,7 @@ This is the standard object-oriented constructor.  When called, will return a ne
 
 B<OPTIONAL>
 
-This key should have a scalar value with the name of the namespace that you will put all the validate_templatename(), pre_templatename() and post_templatename() subroutines in.  If not supplied, it will default to the caller's namespace.  Finally if the caller's namespace cannot be determined, it will default to "main".
+This key should have a scalar value with the name of the namespace that you will put all the validate_templatename(), pre_templatename(), post_templatename(), pre__pre__all(), post__pre__all(), pre__post__all() and post__post__all() subroutines in.  If not supplied, it will default to the caller's namespace.  Finally if the caller's namespace cannot be determined, it will default to "main".
 
 The main use of this option is to allow you, if you so choose, to place your callbacks subs into any arbitrary namespace you decide on (to avoid pollution of your main namespace for example).
 
@@ -656,7 +680,7 @@ This method accepts a scalar key as it's first argument and an optional scalar v
 
 =item show_template($scalar)
 
-This method accepts a scalar template name, calls the pre_templatename() sub if found, sends the template to the client, calls the post_templatename() sub if found, then exists.  Internally uses the return_template() method to calculate actual content to send.
+This method accepts a scalar template name, calls the pre__pre__all() sub if found, calls the pre_templatename() sub if found, calls the post__pre__all() sub if found, sends the template to the client, calls the pre__post__all() sub if found, calls the post_templatename() sub if found, calls the post__post__all() sub if found, then exists.  Internally uses the return_template() method to calculate actual content to send.
 
 Note: This method exit()s when done.  It does not return.
 
@@ -1438,8 +1462,9 @@ sub session {
 
 #
 # Takes a template name
+# Calls pre__pre__all() and pre_templatename() and post__pre__all()
 # Shows it
-# Calls pre_templatename and post_templatename appropriately
+# Calls pre__post__all() and post_templatename() and post__post__all()
 # THEN EXITS
 #
 sub show_template {
@@ -1450,12 +1475,28 @@ sub show_template {
 
 	no strict 'refs';
 
+	if (defined &{"$self->{callbacks_namespace}::pre__pre__all"}) {
+
+		#
+		# Execute a pre__pre__all
+		#
+		&{"$self->{callbacks_namespace}::pre__pre__all"}($self);
+	}
+
 	if (defined &{"$self->{callbacks_namespace}::pre_$template_name"}) {
 
 		#
 		# Execute a pre_ for this template
 		#
 		&{"$self->{callbacks_namespace}::pre_$template_name"}($self);
+	}
+
+	if (defined &{"$self->{callbacks_namespace}::post__pre__all"}) {
+
+		#
+		# Execute a post__pre__all
+		#
+		&{"$self->{callbacks_namespace}::post__pre__all"}($self);
 	}
 
 	#
@@ -1474,6 +1515,15 @@ sub show_template {
 	}
 	print "\n";
 	print $content;
+	$self->session("_lastsent", $template_name);
+
+	if (defined &{"$self->{callbacks_namespace}::pre__post__all"}) {
+
+		#
+		# Execute a pre__post__all
+		#
+		&{"$self->{callbacks_namespace}::pre__post__all"}($self);
+	}
 
 	if (defined &{"$self->{callbacks_namespace}::post_$template_name"}) {
 
@@ -1483,7 +1533,14 @@ sub show_template {
 		&{"$self->{callbacks_namespace}::post_$template_name"}($self);
 	}
 
-	$self->session("_lastsent", $template_name);
+	if (defined &{"$self->{callbacks_namespace}::post__post__all"}) {
+
+		#
+		# Execute a post__post__all
+		#
+		&{"$self->{callbacks_namespace}::post__post__all"}($self);
+	}
+
 	exit;
 }
 

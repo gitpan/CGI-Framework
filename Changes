@@ -1,6 +1,13 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.15 2003/12/17 04:31:52 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.17 2004/01/07 02:40:18 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.12
+	- Implemented support for 4 new callbacks:
+	    pre__pre__all()
+	    post__pre__all()
+	    pre__post__all()
+	    post__post__all()
 
 0.11
 	- Implemented new method: return_template()

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.108 2004/01/25 17:49:45 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.116 2004/04/04 05:22:47 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,11 +12,8 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = "0.13";
-	@ISA     = qw (Exporter);
-
-	undef $LASTINSTANCE;
-
+	$VERSION     = "0.14";
+	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
 	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
@@ -157,7 +154,7 @@ This sub will be called right before the template templatename is sent to the br
 
 =item post_templatename()
 
-This sub will be called right after the template templatename has been sent to the browser and right before the CGI exits.  It's job is to do any clean-up necessary after displaying that template.  For example, on a final-logout template, this sub could call the clear_session() method to delete any sensitive information.
+This sub will be called right after the template templatename has been sent to the browser and right before the CGI finishes.  It's job is to do any clean-up necessary after displaying that template.  For example, on a final-logout template, this sub could call the clear_session() method to delete any sensitive information.
 
 =back
 
@@ -480,6 +477,12 @@ This is the standard object-oriented constructor.  When called, will return a ne
 
 =over 4
 
+=item action
+
+B<OPTIONAL>
+
+If this key is supplied, it should contain the value to be used in the <form> HTML element's "action" parameter.  If not supplied, it will default to environment variable SCRIPT_NAME
+
 =item callbacks_namespace
 
 B<OPTIONAL>
@@ -487,6 +490,12 @@ B<OPTIONAL>
 This key should have a scalar value with the name of the namespace that you will put all the validate_templatename(), pre_templatename(), post_templatename(), pre__pre__all(), post__pre__all(), pre__post__all() and post__post__all() subroutines in.  If not supplied, it will default to the caller's namespace.  Finally if the caller's namespace cannot be determined, it will default to "main".
 
 The main use of this option is to allow you, if you so choose, to place your callbacks subs into any arbitrary namespace you decide on (to avoid pollution of your main namespace for example).
+
+=item cookie_domain
+   
+B<OPTIONAL>
+	   
+The key should have a scalar value with the domain that cookie_name is set to.  If not supplied the cookie will not be assigned to a specific domain, essentially making tied to the current hostname.
 
 =item cookie_name
 
@@ -634,6 +643,12 @@ This method deletes all the previously-stored values using the session() or reme
 
 This method is the central dispatcher.  It calls validate_templatename on the just-submitted template, checks to see if any errors were added with the add_error() method.  If any errors were added, re-sends the client the previous template, otherwise sends the client the template they requested.
 
+=item finalize
+
+This method undefs some internal references that prevent the object from being destroyed.  It's called automatically for you when show_template() is done or if there's a fatal error, so there is usually no need to call it manually.
+
+This method exit()s when done - it does not return.
+
 =item form($scalar)
 
 This method accepts an optional scalar as it's first argument, and returns the value associated with that key from the just-submitted form from the client.  If no scalar is supplied, returns all entries from the just-submitted form.
@@ -688,7 +703,7 @@ This method accepts a scalar key as it's first argument and an optional scalar v
 
 This method accepts a scalar template name, calls the pre__pre__all() sub if found, calls the pre_templatename() sub if found, calls the post__pre__all() sub if found, sends the template to the client, calls the pre__post__all() sub if found, calls the post_templatename() sub if found, calls the post__post__all() sub if found, then exists.  Internally uses the return_template() method to calculate actual content to send.
 
-Note: This method exit()s when done.  It does not return.
+Note: This method calls finalize() when done.  It does not return.
 
 =back
 
@@ -1001,6 +1016,15 @@ sub dispatch {
 }
 
 #
+# Cleans up internal references to allow for destruction THEN EXITS
+#
+sub finalize {
+	undef $LASTINSTANCE;
+	set_message(undef);
+	exit;
+}
+
+#
 # Takes a scalar key
 # Returns the value for that key from the just-submitted form
 #
@@ -1111,6 +1135,15 @@ sub new {
 	my $expire;
 	local (*FH);
 
+	$self = bless($self, ref($class) || $class);
+
+	#
+	# Paranoia: It should be clear anyways... but
+	#
+	if ($LASTINSTANCE) {
+		$LASTINSTANCE->finalize();
+	}
+
 	#
 	# Backwards compatability support
 	#
@@ -1141,6 +1174,7 @@ sub new {
 						print SMH "To: ", (ref($para{"fatal_error_email"}) eq "ARRAY" ? join(",", @{ $para{"fatal_error_email"} }) : $para{"fatal_error_email"}), "\n";
 						print SMH "Subject: Fatal Error\n";
 						print SMH "X-CGI-Framework-Method: sendmail $para{sendmail}\n";
+						print SMH "X-CGI-Framework-REMOTE-ADDR: $ENV{REMOTE_ADDR}\n";
 						print SMH "\n";
 						print SMH "The following fatal error occurred:\n\n$error\n";
 						close(SMH);
@@ -1153,7 +1187,7 @@ sub new {
 						my $smtp = Net::SMTP->new($para{"smtp_host"}) || die "Could not create Net::SMTP object: $@\n";
 						$smtp->mail($para{"smtp_from"} || 'cgiframework@localhost') || die "Could not send MAIL command: $@\n";
 						$smtp->recipient(ref($para{"fatal_error_email"}) eq "ARRAY" ? @{ $para{"fatal_error_email"} } : $para{"fatal_error_email"}) || die "Could not send RECIPIENT command: $@\n";
-						$smtp->data("X-CGI-Framework-Method: Net::SMTP $para{smtp_host}\n\nThe following fatal error occurred:\n\n$error") || die "Could not send DATA command: $@\n";
+						$smtp->data("X-CGI-Framework-Method: Net::SMTP $para{smtp_host}\nX-CGI-Framework-REMOTE-ADDR: $ENV{REMOTE_ADDR}\n\nThe following fatal error occurred:\n\n$error") || die "Could not send DATA command: $@\n";
 						$smtp->quit();
 					};
 					$emailsent = 1 if !$@;
@@ -1168,6 +1202,7 @@ sub new {
 				if (!$errorsent) {
 					print "<h1>The following fatal error occurred:</h1><p>$error\n";
 				}
+				$self->finalize();
 			}
 		);
 	}
@@ -1249,6 +1284,7 @@ sub new {
 	#
 	# And now some initialization
 	#
+	$self->{action}              = $para{action};
 	$self->{valid_languages}     = $para{valid_languages};
 	$self->{templates_dir}       = $para{templates_dir};
 	$self->{initial_template}    = $para{initial_template};
@@ -1292,7 +1328,7 @@ sub new {
 	if (!$cookie_value || ($self->{_session}->id() ne $cookie_value)) {
 
 		# We just created a new session - send it to the user
-		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), "\n";
+		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), ($para{cookie_domain} ? "; domain=" . $para{cookie_domain} : ""), "\n";
 	}
 	$expire = $para{"expire"} ? ($para{"expire"} =~ /[^0-9]/ ? $para{"expire"} : "+$para{expire}m") : "+15m";
 	$self->{_session}->expire($expire);
@@ -1306,12 +1342,12 @@ sub new {
 			#
 			# Override session language
 			#
-			$self->{_session}->param("_lang", $self->{_cgi}->param("_lang"));
+			$self->{_session}->param("_lang", scalar $self->{_cgi}->param("_lang"));
 		}
 		else {
 			print "Content-type: text/plain\n\n";
 			print "Unsupported language\n";
-			exit;
+			$self->finalize();
 		}
 	}
 	elsif (scalar @{ $self->{valid_languages} } && !$self->{_session}->param("_lang")) {
@@ -1323,7 +1359,6 @@ sub new {
 	#
 	# We're done initializing !
 	#
-	$self = bless($self, ref($class) || $class);
 	$LASTINSTANCE = $self;
 	return ($self);
 }
@@ -1355,6 +1390,7 @@ sub return_template {
 	my $temp;
 	my $header;
 	my $footer;
+	my $action;
 
 	no strict 'refs';
 
@@ -1415,6 +1451,7 @@ sub return_template {
 		foreach (qw(cgi_framework_header cgi_framework_footer)) {
 			$output =~ /<$_>/i || croak "Error: Cumulative templates for step $template_name does not contain the required <$_> tag";
 		}
+		$action = $self->{action} || $ENV{"SCRIPT_NAME"};
 		$header = <<"EOM";
 	<!-- CGI::Framework BEGIN HEADER -->
 	<script language="JavaScript">
@@ -1439,7 +1476,7 @@ sub return_template {
 	}
 	// -->
 	</script>
-	<form name="myform" method="POST" enctype="multipart/form-data" action="$ENV{SCRIPT_NAME}" onSubmit="return checksubmit();">
+	<form name="myform" method="POST" enctype="multipart/form-data" action="$action" onSubmit="return checksubmit();">
 	<input type="hidden" name="_action" value="">
 	<input type="hidden" name="_item" value="">
 	<input type="hidden" name="_sv" value="">
@@ -1550,7 +1587,7 @@ sub show_template {
 		&{"$self->{callbacks_namespace}::post__post__all"}($self);
 	}
 
-	exit;
+	$self->finalize();
 }
 
 #
@@ -1606,6 +1643,7 @@ sub localize {
 # Takes a templatename
 # If found, returns templatefilename, contenttype if wantarray and just the filename in scalar mode
 # otherwise, returns undef
+#
 sub _get_template_details {
 	my $self = _getself(\@_);
 	my $template_name = shift || croak "templatename not supplied";
@@ -1647,7 +1685,7 @@ sub _missinginfo {
 	else {
 		print "Content-type: text/plain\n\n";
 		print "You are trying to submit a form with some missing information.  Please start from the beginning.";
-		exit;
+		$self->finalize();
 	}
 }
 

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.104 2004/01/07 02:40:18 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.108 2004/01/25 17:49:45 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = "0.12";
+	$VERSION = "0.13";
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
@@ -501,6 +501,12 @@ B<OPTIONAL>
 This key should have a scalar value that's true (such as 1) or false (such as 0).  Setting it to true will instruct the framework not to allow the user to use their browser's back button.  This is done by setting no-cache pragmas on every page served, setting a past expiry date, as well as detecting submissions from previously-served templates and re-showing the last template sent.
 
 This behaviour is often desired in time-sensitive web applications.
+
+=item expire
+
+B<OPTIONAL>
+
+Set this to a value that will be passed to CGI::Session's expire() method.  If supplied and contains non-digits (such as "+2h") it will be passed verbatim.  If supplied and is digits only, it will be passed as minutes.  If not supplied will default to "+15m"
 
 =item fatal_error_email
 
@@ -1102,6 +1108,7 @@ sub new {
 	my $self = {};
 	my $cookie_value;
 	my $temp;
+	my $expire;
 	local (*FH);
 
 	#
@@ -1287,7 +1294,8 @@ sub new {
 		# We just created a new session - send it to the user
 		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), "\n";
 	}
-	$self->{_session}->expire("+15m");
+	$expire = $para{"expire"} ? ($para{"expire"} =~ /[^0-9]/ ? $para{"expire"} : "+$para{expire}m") : "+15m";
+	$self->{_session}->expire($expire);
 
 	#
 	# Language handling
@@ -1361,6 +1369,7 @@ sub return_template {
 		path              => [ $self->{templates_dir} ],
 		associate         => [ $self->{_session}, $self->{_cgi} ],
 		die_on_bad_params => 0,
+		loop_context_vars => 1,
 	  )
 	  || die "Error creating HTML::Template instance: $! $@\n";
 	$template->param($self->{_html});
@@ -1557,7 +1566,7 @@ sub log_this {
 	open(FH, ">>$filename") || die "Error opening $filename: $!\n";
 	flock(FH, LOCK_EX);
 	seek(FH, 0, 2);
-	print FH scalar(localtime), " : ", $ENV{"SCRIPT_NAME"}, " : ", $message, "\n";
+	print FH scalar(localtime), " : ", $ENV{'REMOTE_ADDR'}, " : ", $ENV{"SCRIPT_NAME"}, " : ", $message, "\n";
 	flock(FH, LOCK_UN);
 	close(FH);
 	return (1);

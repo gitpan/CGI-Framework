@@ -1,6 +1,13 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.17 2004/01/07 02:40:18 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.20 2004/01/25 17:49:45 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.13
+	- Implemented new constructor parameter: expire
+	- log_this now also logs the IP address from REMOTE_ADDR
+	- Internal HTML::Template object is now initialized with option
+	  loop_context_vars, allowing for loop vars such as __odd__
+	  and __inner__
 
 0.12
 	- Implemented support for 4 new callbacks:

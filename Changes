@@ -1,6 +1,21 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.5 2003/06/19 23:25:25 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.6 2003/07/16 19:25:11 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.06
+	- Renamed constructor parameter importform to import_form, renamed built-in
+	  html variable _formaction to _form_action.  Both changes are backwards compatible
+	- If "import_form" was supplied to constructor, then subsequent calls to the
+	  form() method will return the value from the import_form namespace instead of
+	  from the built-in CGI object.  This allows the programmer to modify the value
+	  in the namespace (such as $FORM::firstname) then use form() or remember() to
+	  operate on the new value, not the original one.
+	- add_error() method no longer restricted to being called from inside a
+	  validate_templatename() routine.  That gives the flexibility to add_error()
+	  followed by manually calling show_template() at any time.
+	- The INITIALIZENEWPROJECT function now creates an /images/ subdirectory
+	  inside the /public_html/ subdirectory and places a couple of small images in
+	  it, which the errors.html template references. It looks nicer :)
 
 0.05
 	- Fixed a bug that caused the framework not to call the pre_templatename and

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.63 2003/06/19 23:25:25 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.72 2003/07/16 19:25:44 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -11,7 +11,7 @@ use CGI::Carp qw(fatalsToBrowser);
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.05;
+	$VERSION = 0.06;
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
@@ -476,13 +476,13 @@ B<MANDATORY>
 
 This key should have a scalar value with the name of the first template that will be shown to the client when the dispatch() method is called.
 
-=item importform
+=item import_form
 
 B<OPTIONAL>
 
 This variable should have a scalar value with the name of a namespace in it.   It imports all the values of the just-submitted form into the specified namespace.  For example:
 
-	importform	=>	"FORM",
+	import_form	=>	"FORM",
 
 You can then use form elements like:
 
@@ -602,7 +602,7 @@ Aside from variables added through the html() method, the submitted form and the
 
 =over 4
 
-=item _formaction
+=item _form_action
 
 This variable will contain the URL to the current CGI
 
@@ -639,9 +639,8 @@ L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>.
 # Adds it to the errors que
 #
 sub add_error {
-	my $self = _getself(\@_);
-	$self->{_allow_add_error} || croak "Cannot call add_error at this time";
-	my $error = shift || croak "Error not supplied";
+	my $self            = _getself(\@_);
+	my $error           = shift || croak "Error not supplied";
 	my $existing_errors = $self->{_html}->{_errors} || [];
 	push (@$existing_errors, { error => $error, });
 	$self->{_html}->{_errors} = $existing_errors;
@@ -701,9 +700,7 @@ sub dispatch {
 		#We skip validation as per requested
 	}
 	elsif (defined &{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }) {
-		$self->{_allow_add_error} = 1;
 		&{ "$self->{callbacks_namespace}::validate_" . $self->session("_lastsent") }($self);
-		$self->{_allow_add_error} = 0;
 		if ($self->{_html}->{_errors}) {
 
 			#
@@ -730,7 +727,16 @@ sub dispatch {
 sub form {
 	my $self = _getself(\@_);
 	my $key  = shift;
-	return length($key) ? $self->{_cgi}->param($key) : $self->{_cgi}->param();
+	my $value;
+
+	no strict 'refs';
+
+	if (length($key)) {
+		return $self->{_import_form} ? ${ $self->{_import_form} . '::' . $key } : $self->{_cgi}->param($key);
+	}
+	else {
+		return $self->{_cgi}->param();
+	}
 }
 
 #
@@ -818,7 +824,7 @@ sub new {
 	#
 	# Backwards compatability support
 	#
-	foreach (qw(callbacks_namespace cookie_name initial_template sessions_dir templates_dir valid_languages)) {
+	foreach (qw(callbacks_namespace cookie_name import_form initial_template sessions_dir templates_dir valid_languages)) {
 		$temp = $_;
 		$temp =~ s/_//g;
 		if (!exists $para{$_} && exists $para{$temp}) {
@@ -889,10 +895,10 @@ sub new {
 	else {
 		croak "Neither sessions_dir or sessions_mysql_dbh were supplied, and could not automatically determine a suitable sessions_dir";
 	}
-	$para{templates_dir} || croak "templates_dir must be supplied";
-	-d $para{templates_dir} || croak "$para{templates_dir} does not exist or is not a directory";
+	$para{templates_dir}                  || croak "templates_dir must be supplied";
+	-d $para{templates_dir}               || croak "$para{templates_dir} does not exist or is not a directory";
 	-f "$para{templates_dir}/errors.html" || croak "Templates directory $para{templates_dir} does not contain the mandatory errors.html template";
-	$para{initial_template} || croak "initial_template not supplied";
+	$para{initial_template}               || croak "initial_template not supplied";
 
 	#
 	# And now some initialization
@@ -918,8 +924,9 @@ sub new {
 		$self->{_session} = new CGI::Session("driver:MySQL", $cookie_value, { Handle => $para{sessions_mysql_dbh} }) || die "Failed to create new CGI::Session instance with MySQL-based storage: $! $@\n";
 	}
 
-	if ($para{"importform"}) {
-		$self->{_cgi}->import_names($para{"importform"});
+	if ($para{"import_form"}) {
+		$self->{_cgi}->import_names($para{"import_form"});
+		$self->{_import_form} = $para{"import_form"};
 	}
 
 	if (!$cookie_value || ($self->{_session}->id() ne $cookie_value)) {
@@ -928,6 +935,9 @@ sub new {
 		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), "\n";
 	}
 	$self->{_session}->expire("+15m");
+	$self->{_session}->param("_form_action", $ENV{SCRIPT_NAME});
+
+	#legacy
 	$self->{_session}->param("_formaction", $ENV{SCRIPT_NAME});
 
 	#
@@ -1191,12 +1201,13 @@ sub _getself {
 # Creates a skeleton of a new project under it
 #
 sub INITIALIZENEWPROJECT {
-	my $dir = shift || die "\n\nError: You must supply a directory as the first argument\n\n";
+	my $dir           = shift || die "\n\nError: You must supply a directory as the first argument\n\n";
 	my $cgi_dir       = "$dir/cgi-bin";
 	my $lib_dir       = "$dir/lib";
 	my $sessions_dir  = "$dir/sessions";
 	my $templates_dir = "$dir/templates";
 	my $public_dir    = "$dir/public_html";
+	my $images_dir    = "$public_dir/images";
 	local (*FH);
 	my $filename;
 	my $content;
@@ -1210,7 +1221,7 @@ sub INITIALIZENEWPROJECT {
 	#
 	# Create the directories
 	#
-	foreach ($dir, $cgi_dir, $lib_dir, $sessions_dir, $templates_dir, $public_dir) {
+	foreach ($dir, $cgi_dir, $lib_dir, $sessions_dir, $templates_dir, $public_dir, $images_dir) {
 		print "Creating directory $_ ";
 		mkdir($_, 0755) || die "\n\n:Error: Failed to create $_ : $!\n\n";
 		print "\n";
@@ -1330,7 +1341,7 @@ EOM
 
 	<font color=red>PROBLEM:</font>
 
-	It appears that your session is missing some information.  This is usually because you've just attempted to submit a session that has timed-out.  Please <a href="<TMPL_VAR NAME="_formaction" ESCAPE=HTML>">click here</a> to go to the beginning.
+	It appears that your session is missing some information.  This is usually because you've just attempted to submit a session that has timed-out.  Please <a href="<TMPL_VAR NAME="_form_action" ESCAPE=HTML>">click here</a> to go to the beginning.
 
 	<TMPL_INCLUDE NAME="footer.html">
 EOM
@@ -1343,10 +1354,10 @@ EOM
 		<table width=80% border=0 cellspacing=0 cellpadding=5 style="border-style:solid;border-width:1px;border-color:#CC0000;">
 		<tr>
 			<td valign=top align=left>
-				<font color=red><b>The following ERRORS have occurred:</b></font>
+				<img src="/images/exclamation.gif"> <font color=red><b>The following ERRORS have occurred:</b></font>
 				<blockquote>
 					<TMPL_LOOP NAME="_errors">
-						* <TMPL_VAR NAME="error"><br>
+						<img src="/images/dotarrow.gif"> <TMPL_VAR NAME="error"><br>
 					</TMPL_LOOP>
 				</blockquote>
 				<font color=red>Please correct below and try again.</font>
@@ -1403,6 +1414,8 @@ EOM
 			"$lib_dir/validate.pm", 0644, <<"EOM"
 
 	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
+	
+	use strict;
 
 	sub validate_login {
 		my \$f = shift;
@@ -1429,6 +1442,8 @@ EOM
 			"$lib_dir/pre_post.pm", 0644, <<"EOM"
 
 	# Stub module created by CGI::Framework's INITIALIZENEWPROJECT command
+
+	use strict;
 
 	sub pre_login {
 		my \$f = shift;
@@ -1460,6 +1475,8 @@ EOM
 	1;
 EOM
 		],
+		[ "$images_dir/dotarrow.gif",    0644, "\x47\x49\x46\x38\x39\x61\x0b\x00\x08\x00\xb3\x00\x00\xff\xff\xff\xff\x63\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x0b\x00\x08\x00\x00\x04\x14\x10\xc8\x09\x42\xa0\xd8\xe2\x2d\xb5\xbf\xd6\x57\x81\x17\x67\x76\x25\xa7\x01\x11\x00\x3b\x00" ],
+		[ "$images_dir/exclamation.gif", 0644, "\x47\x49\x46\x38\x39\x61\x0e\x00\x0e\x00\xa2\xff\x00\xff\xff\xff\xff\xe6\xb3\xff\xcc\x66\x80\x80\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x21\xff\x0b\x41\x44\x4f\x42\x45\x3a\x49\x52\x31\x2e\x30\x02\xde\xed\x00\x21\xff\x0b\x4e\x45\x54\x53\x43\x41\x50\x45\x32\x2e\x30\x03\x01\x07\x00\x00\x21\xf9\x04\x04\x28\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x28\x08\xba\x44\xfb\x8f\x08\xe1\x20\x9b\xb3\x42\x49\xb9\x56\x5c\x87\x69\xa1\x38\x02\xa5\x39\xa6\x0d\x96\xa1\x6e\x4c\x5d\x59\xf8\xc1\xe6\x0d\xba\x3a\xdd\x47\xba\x04\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x06\x00\x03\x00\x02\x00\x08\x00\x00\x03\x04\x28\xba\xdc\x92\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x33\xfb\x6f\x84\xe0\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x19\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x0d\x08\xba\xdc\xfe\x30\xca\x49\xab\xbd\x38\xeb\xed\x12\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x33\xfb\x6f\x84\xe0\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x0f\x00\x00\x00\x2c\x00\x00\x00\x00\x0e\x00\x0e\x00\x00\x03\x25\x08\xba\x44\xfb\x8f\x08\xe1\x20\x9b\xb3\x42\x89\xf3\xee\x9d\xc6\x81\x98\x33\x92\xe5\x89\x52\x80\x0a\x8a\xab\xa6\xb8\xf2\x55\x5a\x76\x6d\x35\x56\x02\x00\x21\xf9\x04\x04\x28\x00\x00\x00\x2c\x06\x00\x03\x00\x02\x00\x08\x00\x00\x03\x05\x48\xba\x2c\xc2\x09\x00\x3b\x00" ],
 	  )
 	{
 		($filename, $mode, $content) = @$_;

@@ -1,7 +1,14 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.29 2004/08/07 19:33:55 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.30 2004/08/26 23:38:06 mina Exp $
 
 Revision history for Perl module CGI::Framework
 
+0.16
+	- Implemented new constructor parameters: sessions_serializer_default,
+	  sessions_serializer_freezethaw and sessions_serializer_storable
+	- Bugfix - running under mod_perl resulted in occasional "Software
+	  caused connection abort" messages.  These are no longer considered
+	  fatal.
+	
 0.15
 	- No longer tries to write and unlink a testing file to sessions_dir
 	  for every invocation

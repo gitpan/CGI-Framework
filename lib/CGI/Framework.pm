@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.123 2004/09/09 01:57:36 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.124 2004/11/23 00:28:02 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.17";
+	$VERSION     = "0.18";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -180,7 +180,7 @@ This sub will be called after any template is sent (and after post_templatename(
 
 =back
 
-If any of the above subroutines are found and called, they will be passed 1 argument, the CGI::Framework instance itself.
+If any of the above subroutines are found and called, they will be passed 2 arguments: The CGI::Framework instance itself, and the name of the template about to be/just sent.
 
 =back
 
@@ -1617,7 +1617,7 @@ sub show_template {
 		#
 		# Execute a pre__pre__all
 		#
-		&{"$self->{callbacks_namespace}::pre__pre__all"}($self);
+		&{"$self->{callbacks_namespace}::pre__pre__all"}($self, $template_name);
 	}
 
 	if (defined &{"$self->{callbacks_namespace}::pre_$template_name"}) {
@@ -1625,7 +1625,7 @@ sub show_template {
 		#
 		# Execute a pre_ for this template
 		#
-		&{"$self->{callbacks_namespace}::pre_$template_name"}($self);
+		&{"$self->{callbacks_namespace}::pre_$template_name"}($self, $template_name);
 	}
 
 	if (defined &{"$self->{callbacks_namespace}::post__pre__all"}) {
@@ -1633,7 +1633,7 @@ sub show_template {
 		#
 		# Execute a post__pre__all
 		#
-		&{"$self->{callbacks_namespace}::post__pre__all"}($self);
+		&{"$self->{callbacks_namespace}::post__pre__all"}($self, $template_name);
 	}
 
 	#
@@ -1659,7 +1659,7 @@ sub show_template {
 		#
 		# Execute a pre__post__all
 		#
-		&{"$self->{callbacks_namespace}::pre__post__all"}($self);
+		&{"$self->{callbacks_namespace}::pre__post__all"}($self, $template_name);
 	}
 
 	if (defined &{"$self->{callbacks_namespace}::post_$template_name"}) {
@@ -1675,7 +1675,7 @@ sub show_template {
 		#
 		# Execute a post__post__all
 		#
-		&{"$self->{callbacks_namespace}::post__post__all"}($self);
+		&{"$self->{callbacks_namespace}::post__post__all"}($self, $template_name);
 	}
 
 	$self->finalize();

@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.122 2004/08/26 23:38:06 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.123 2004/09/09 01:57:36 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.16";
+	$VERSION     = "0.17";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -298,11 +298,11 @@ B<MANDATORY>
 
 This first parameter is the name of the template to show.  For example, if the user clicked on an option called "show my account info" that should load the accountinfo.html template, the javascript code could look like this:
 
-	<a href="#" onclick="process('accountinfo');">Show my account info</a>
+	<a href="#" onclick="return process('accountinfo');">Show my account info</a>
 
 or
 
-	<input type="button" value=" LIST MY ACCOUNT BALANCES &gt;&gt; " onclick="process('accountbalances');">
+	<input type="button" value=" LIST MY ACCOUNT BALANCES &gt;&gt; " onclick="return process('accountbalances');">
 
 =item item
 
@@ -312,11 +312,11 @@ If this second parameter is supplied to the process() call, it's value will be a
 
 This is typically used to distinguish between similar choices.  For example, if you're building a GUI that allows the user to change the password of any of their accounts, you could have something similar to this:
 
-	bob@domain.com   <input type="button" value="CHANGE PASSWORD" onclick="process('changepassword', 'bob@domain.com');">
+	bob@domain.com   <input type="button" value="CHANGE PASSWORD" onclick="return process('changepassword', 'bob@domain.com');">
 	<br>
-	mary@domain.com  <input type="button" value="CHANGE PASSWORD" onclick="process('changepassword', 'mary@domain.com');">
+	mary@domain.com  <input type="button" value="CHANGE PASSWORD" onclick="return process('changepassword', 'mary@domain.com');">
 	<br>
-	john@domain.com  <input type="button" value="CHANGE PASSWORD" onclick="process('changepassword', 'john@domain.com');">
+	john@domain.com  <input type="button" value="CHANGE PASSWORD" onclick="return process('changepassword', 'john@domain.com');">
 
 =item skipvalidation
 
@@ -1555,6 +1555,7 @@ sub return_template {
 			document.myform._sv.value=sv;
 		}
 		document.myform.submit();
+		return false;
 	}
 	function checksubmit() {
 		if (document.myform._action.value == "") {
@@ -1887,7 +1888,7 @@ EOM
 
 	<p>
 
-	<input type="button" value=" login &gt;&gt; " onclick="process('mainmenu');">
+	<input type="button" value=" login &gt;&gt; " onclick="return process('mainmenu');">
 
 	<TMPL_INCLUDE NAME="footer.html">
 EOM
@@ -1901,8 +1902,8 @@ EOM
 	<p>
 	Please select from the main menu:
 	<UL>
-		<LI> <a href="#" onclick="process('youraccount');"> View your account details</a>
-		<LI> <a href="#" onclick="process('logout');"> Log out</a>
+		<LI> <a href="#" onclick="return process('youraccount');"> View your account details</a>
+		<LI> <a href="#" onclick="return process('logout');"> Log out</a>
 	</UL>
 
 	<TMPL_INCLUDE NAME="footer.html">
@@ -1936,7 +1937,7 @@ EOM
 
 	<p>
 
-	<input type="button" value=" &lt;&lt; back to main menu " onclick="process('mainmenu');">
+	<input type="button" value=" &lt;&lt; back to main menu " onclick="return process('mainmenu');">
 
 	<TMPL_INCLUDE NAME="footer.html">
 EOM

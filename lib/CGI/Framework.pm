@@ -1,23 +1,24 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.72 2003/07/16 19:25:44 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.83 2003/10/14 22:38:32 mina Exp $
 
 use strict;
 use HTML::Template;
 use CGI::Session qw/-api3/;
 use CGI;
-use CGI::Carp qw(fatalsToBrowser);
+use CGI::Carp qw(fatalsToBrowser set_message);
+use Fcntl ':flock';
 
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION = 0.06;
+	$VERSION = 0.07;
 	@ISA     = qw (Exporter);
 
 	undef $LASTINSTANCE;
 
 	@EXPORT      = qw ();
-	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form  get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework remember session show_template);
+	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initialize_cgi_framework log_this remember session show_template);
 	%EXPORT_TAGS = ('nooop' => [@EXPORT_OK],);
 }
 
@@ -90,7 +91,7 @@ It is primarily a glue between HTML::Template, CGI::Session, CGI, and some magic
 
 =head1 DESCRIPTION
 
-CGI::Framework is a simple and lightweight framework for building web-based CGI applications.  It features complete code-content separation by utilizing the HTML::Template library, stateful sessions by utilizing the CGI::Session library, form parsing by utilizing the CGI library, (optional) multi-lingual templates support, and an extremely easy to use methodology for the validation, pre-preparation and post-cleanup associated with each template.
+CGI::Framework is a simple and lightweight framework for building web-based CGI applications.  It features complete code-content separation (templating) by utilizing the HTML::Template library, stateful file or database-based sessions by utilizing the CGI::Session library, form parsing by utilizing the CGI library, (optional) multi-lingual templates support, and an extremely easy to use methodology for the validation, pre-preparation and post-cleanup associated with each template.  It also provides easy logging mechanisms, graceful fatal error handling, including special templates and emails to admins.
 
 =head1 CONCEPTUAL OVERVIEW
 
@@ -256,7 +257,7 @@ Has been added in the past to the session using the session() method.
 
 =item *
 
-Has been added automatically for you by CGI::Framework. See the DEFAULT TEMPLATE VARIABLES section.
+Has been added automatically for you by CGI::Framework. See the PRE-DEFINED TEMPLATE VARIABLES section.
 
 =back
 
@@ -345,6 +346,12 @@ It is mandatory to create a special template named errors.html.  This template w
 It is recommended, although not mandatory, to create a special template named missinginfo.html.  This template will be shown to the client when an assertion made through the assert_form() or assert_session() methods fail.  It's job is to explain to the client that they're probably using a timed-out session, and invites them to start from the beginning.
 
 If this template is not found, the above error will be displayed to the client in a text mode.
+
+=item The fatal error template
+
+It is recommended, although not mandatory, to create a special template called fatalerror.html and specify that name as the fatal_error_template constructor key.  Usually when a fatal error occurs it will be caught by L<CGI::Carp> and a trace will be shown to the browser.  This is often technical and is always an eyesore since it does not match your site design.  If you'd like to avoid that and show a professional apologetic message when a fatal error occurs, make use of thie fatal error template feature.
+
+See the "PRE-DEFINED TEMPLATE VARIABLES" section below for an elaboration on the fatal error template and the special variable _fatal_error that you could use in it.
 
 =back
 
@@ -470,6 +477,18 @@ B<OPTIONAL>
 
 This key should have a scalar value with the name of the cookie to use when communicating the session ID to the client.  If not supplied, will default to "sessionid_" and a simplified representation of the URL.
 
+=item fatal_error_email
+
+B<OPTIONAL>
+
+If you would like to receive an email when a fatal error occurs, supply this key with a value of either a scalar email address, or an arrayref of multiple email addresses.  You will also need to supply the smtp_host key and/or the sendmail key.
+
+=item fatal_error_template
+
+B<OPTIONAL>
+
+Normally fatal errors (caused by a die() anywhere in the program) are captured by CGI::Carp and sent to the browser along with the web server's error log file.  If this key is supplied, it's value should be a template name.  That template would then be showed instead of the normal CGI::Carp error message.  When the template is called, the special template variable _fatal_error will be set.  This will allow you to optionally show or not show it by including it in the template content.
+
 =item initial_template
 
 B<MANDATORY>
@@ -490,6 +509,18 @@ You can then use form elements like:
 
 It provides a more flexible alternative to using the form() method since it can be interpolated inside double-quoted strings, however costs more memory.  I am also unsure about how such a namespace would be handled under mod_perl and if it'll remain persistent or not, possibly causing problems.
 
+=item log_filename
+
+B<OPTIONAL>
+
+This variable should have a scalar value with a fully-qualified filename in it.  It will be used by the log_this() method as the filename to log messages to.  If supplied, make sure that it is writeable by the user your web server software runs as.
+
+=item sendmail
+
+B<OPTIONAL>
+
+If you supplied the fatal_error_email key, you must also supply this key and/or the smtp_host key.  If you'd like to deliver the mail using sendmail, supply this key with a value of the fully qualified path to your sendmail binary.
+
 =item sessions_dir
 
 B<OPTIONAL>
@@ -505,6 +536,20 @@ B<OPTIONAL>
 This key should have a value that's a MySQL DBH (DataBase Handle) instance created with the DBI and DBD::Mysql modules.  If supplied then the session data will be stored in the mysql table instead of text files.  For more information on how to prepare the database, refer to the L<CGI::Session::MySQL> documentation.
 
 Note: You may not supply this if you supply the sessions_dir key.
+
+=item smtp_from
+
+B<OPTIONAL>
+
+If your mail server supplied in smtp_host is picky about the "from" address it accepts emails from, set this key to a scalar email address value.  If not set, the email address 'cgiframework@localhost' will be set as the from-address.
+
+=item smtp_host
+
+B<OPTIONAL>
+
+If you supplied the fatal_error_email key, you must also supply this key and/or the sendmail key.  If you'd like to deliver the mail using direct SMTP transactions (and have Net::SMTP installed), supply this key with a value of the hostname of the mailserver to connect to.
+
+If your mailserver is picky about the "from" address it accepts mail from, you should also supply the smtp_from key when using this key, otherwise 'cgiframework@localhost' will be supplied as the from address.
 
 =item templates_dir
 
@@ -544,7 +589,7 @@ Just like the assert_form() method, except it checks the values against the sess
 
 =item clear_session
 
-This method deletes all the previously-stored values using the session() method.
+This method deletes all the previously-stored values using the session() or remember() methods.
 
 =item dispatch
 
@@ -574,6 +619,10 @@ Very similar to the above html() method, except it treats the key's value as an 
 
 Very similar to the above html_push() method, except it unshift()s instead of push()es the value.
 
+=item log_this($scalar)
+
+This method accepts a scalar message and logs it to the filename specified in the log_filename parameter in the new constructor.  You can not use this method if you have not supplied a log_filename setting to the constructor.
+
 =item remember($scalar [, $scalar])
 
 This method accepts a mandatory scalar source key name as it's first argument and an optional scalar destination key name as it's second argument .  It then treats that source scalar as a key in the just-submitted form, and saves that key-value pair into the session.  This method is simply shorthand for saying:
@@ -596,11 +645,19 @@ This method accepts a scalar template name, calls the pre_templatename() sub if 
 
 =back
 
-=head1 DEFAULT TEMPLATE VARIABLES
+=head1 PRE-DEFINED TEMPLATE VARIABLES
 
 Aside from variables added through the html() method, the submitted form and the current session, these pre-defined variables will be automatically set for you to use in your templates:
 
 =over 4
+
+=item _current_template
+
+This variable will contain the name of the current template
+
+=item _fatal_error
+
+This variable will contain the error message that caused a fatal error.  It will only be available when a fatal error occurs and the fatal error template specified by the fatal_error_template constructor argument is being shown.
 
 =item _form_action
 
@@ -630,7 +687,7 @@ Copyright (C) 2003 Mina Naguib.
 
 =head1 SEE ALSO
 
-L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>.
+L<HTML::Template>, L<CGI::Session>, L<CGI::Session::MySQL>, L<CGI>, L<CGI::Carp>.
 
 =cut
 
@@ -642,7 +699,7 @@ sub add_error {
 	my $self            = _getself(\@_);
 	my $error           = shift || croak "Error not supplied";
 	my $existing_errors = $self->{_html}->{_errors} || [];
-	push (@$existing_errors, { error => $error, });
+	push(@$existing_errors, { error => $error, });
 	$self->{_html}->{_errors} = $existing_errors;
 	return 1;
 }
@@ -779,7 +836,7 @@ sub html_push {
 	if (ref($existing_value) ne "ARRAY") {
 		croak "Key $key already exists as non-array. Cannot push into it.";
 	}
-	push (@{$existing_value}, $value);
+	push(@{$existing_value}, $value);
 	$self->{_html}->{$key} = $existing_value;
 	return 1;
 }
@@ -796,7 +853,7 @@ sub html_unshift {
 	if (ref($existing_value) ne "ARRAY") {
 		croak "Key $key already exists as non-array. Cannot unshift into it.";
 	}
-	unshift (@{$existing_value}, $value);
+	unshift(@{$existing_value}, $value);
 	$self->{_html}->{$key} = $existing_value;
 	return 1;
 }
@@ -831,6 +888,55 @@ sub new {
 			$para{$_} = $para{$temp};
 			delete $para{$temp};
 		}
+	}
+
+	#
+	# Custom fatal error handling
+	#
+	$para{fatal_error_email} && !$para{smtp_host} && !$para{sendmail} && croak "You must supply smtp_host and/or sendmail when supplying fatal_error_email";
+	if ($para{"fatal_error_template"} || $para{"fatal_error_email"}) {
+		set_message(
+			sub {
+				my $error     = shift;
+				my $emailsent = 0;
+				my $errorsent = 0;
+				local (*SMH);
+				if (!$emailsent && $para{"fatal_error_email"} && $para{"sendmail"}) {
+					eval {
+						open(SMH, "| $para{sendmail} -t -i") || die "Failed to open pipe to sendmail: $!\n";
+						print SMH "From: CGI::Framework\n";
+						print SMH "To: ", (ref($para{"fatal_error_email"}) eq "ARRAY" ? join(",", @{ $para{"fatal_error_email"} }) : $para{"fatal_error_email"}), "\n";
+						print SMH "Subject: Fatal Error\n";
+						print SMH "X-CGI-Framework-Method: sendmail $para{sendmail}\n";
+						print SMH "\n";
+						print SMH "The following fatal error occurred:\n\n$error\n";
+						close(SMH);
+					};
+					$emailsent = 1 if !$@;
+				}
+				if (!$emailsent && $para{"fatal_error_email"} && $para{"smtp_host"}) {
+					eval {
+						require Net::SMTP;
+						my $smtp = Net::SMTP->new($para{"smtp_host"}) || die "Could not create Net::SMTP object: $@\n";
+						$smtp->mail($para{"smtp_from"} || 'cgiframework@localhost') || die "Could not send MAIL command: $@\n";
+						$smtp->recipient(ref($para{"fatal_error_email"}) eq "ARRAY" ? @{ $para{"fatal_error_email"} } : $para{"fatal_error_email"}) || die "Could not send RECIPIENT command: $@\n";
+						$smtp->data("X-CGI-Framework-Method: Net::SMTP $para{smtp_host}\n\nThe following fatal error occurred:\n\n$error") || die "Could not send DATA command: $@\n";
+						$smtp->quit();
+					};
+					$emailsent = 1 if !$@;
+				}
+				if ($para{"fatal_error_template"}) {
+					eval {
+						$self->{_html}->{_fatal_error} = $error;
+						$self->show_template($para{"fatal_error_template"});
+					};
+					$errorsent = 1 if !$@;
+				}
+				if (!$errorsent) {
+					print "<h1>The following fatal error occurred:</h1><p>$error\n";
+				}
+			}
+		);
 	}
 
 	#
@@ -899,6 +1005,10 @@ sub new {
 	-d $para{templates_dir}               || croak "$para{templates_dir} does not exist or is not a directory";
 	-f "$para{templates_dir}/errors.html" || croak "Templates directory $para{templates_dir} does not contain the mandatory errors.html template";
 	$para{initial_template}               || croak "initial_template not supplied";
+	if ($para{log_filename}) {
+		open(FH, ">>$para{log_filename}") || croak "Log filename $para{log_filename} is not writeable by me: $@";
+		close(FH);
+	}
 
 	#
 	# And now some initialization
@@ -907,8 +1017,10 @@ sub new {
 	$self->{templates_dir}       = $para{templates_dir};
 	$self->{initial_template}    = $para{initial_template};
 	$self->{callbacks_namespace} = $para{callbacks_namespace};
+	$self->{log_filename}        = $para{log_filename};
 	$self->{_cgi}                = new CGI || die "Failed to create a new CGI instance: $! $@\n";
 	$cookie_value = $self->{_cgi}->cookie($para{cookie_name}) || undef;
+
 	if ($para{sessions_dir}) {
 
 		#
@@ -935,10 +1047,6 @@ sub new {
 		print "Set-Cookie: $para{cookie_name}=", $self->{_session}->id(), "\n";
 	}
 	$self->{_session}->expire("+15m");
-	$self->{_session}->param("_form_action", $ENV{SCRIPT_NAME});
-
-	#legacy
-	$self->{_session}->param("_formaction", $ENV{SCRIPT_NAME});
 
 	#
 	# Language handling
@@ -1035,6 +1143,13 @@ sub show_template {
 	  )
 	  || die "Error creating HTML::Template instance: $! $@\n";
 	$template->param($self->{_html});
+	$template->param(
+		{
+			_form_action      => $ENV{SCRIPT_NAME},
+			_formaction       => $ENV{SCRIPT_NAME},
+			_current_template => $template_name,
+		}
+	);
 	$output = $template->output();
 
 	#
@@ -1058,7 +1173,7 @@ sub show_template {
 		($output) = ($output =~ /\[netscape\]\s*\n((?:.*=.*\n)+)/i);
 		$temp = "";
 		foreach ("STATUS=OK", split /\n/, $output) {
-			($key, $value) = split (/=/);
+			($key, $value) = split(/=/);
 			$temp .= pack("nA*nA*", length($key), $key, length($value), $value);
 		}
 		$output = $temp;
@@ -1121,6 +1236,25 @@ EOM
 	}
 	$self->session("_lastsent", $template_name);
 	exit;
+}
+
+#
+# This sub takes whatever's passed to it and
+# records it in the log file
+#
+sub log_this {
+	my $self     = _getself(\@_);
+	my $message  = shift;
+	my $filename = $self->{log_filename} || croak "Can not use log_this since no log_filename was defined in the constructor";
+	local (*FH);
+	$message =~ s/[\n\r]/-/g;
+	open(FH, ">>$filename") || die "Error opening $filename: $!\n";
+	flock(FH, LOCK_EX);
+	seek(FH, 0, 2);
+	print FH scalar(localtime), " : ", $ENV{"SCRIPT_NAME"}, " : ", $message, "\n";
+	flock(FH, LOCK_UN);
+	close(FH);
+	return (1);
 }
 
 ############################################################################
@@ -1507,6 +1641,10 @@ sub clearsession {
 
 sub showtemplate {
 	return show_template(@_);
+}
+
+sub logthis {
+	return log_this(@_);
 }
 
 1;

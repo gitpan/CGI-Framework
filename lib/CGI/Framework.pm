@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.116 2004/04/04 05:22:47 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.120 2004/08/07 19:38:25 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.14";
+	$VERSION     = "0.15";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -1166,7 +1166,28 @@ sub new {
 				my $error     = shift;
 				my $emailsent = 0;
 				my $errorsent = 0;
+				my $index;
+				my @callerparts;
+				my @stack;
 				local (*SMH);
+
+				#
+				# Append stack to error message:
+				#
+				for ($index = 0 ; @callerparts = caller($index) ; $index++) {
+					push(@stack, "$callerparts[1]:$callerparts[2] ($callerparts[3])");
+				}
+				@stack = reverse @stack;
+				$error .= "\n\nStack trace appended by CGI::Framework fatal error handler:\n";
+				foreach (0 .. $#stack) {
+					$error .= "    " x ($_ + 1);
+					$error .= $stack[$_];
+					$error .= "\n";
+				}
+
+				#
+				# Now try to send the fatal error email
+				#
 				if (!$emailsent && $para{"fatal_error_email"} && $para{"sendmail"}) {
 					eval {
 						open(SMH, "| $para{sendmail} -t -i") || die "Failed to open pipe to sendmail: $!\n";
@@ -1192,12 +1213,25 @@ sub new {
 					};
 					$emailsent = 1 if !$@;
 				}
+
+				#
+				# Now show something back to the web user regarding the error
+				#
 				if ($para{"fatal_error_template"}) {
 					eval {
 						$self->{_html}->{_fatal_error} = $error;
 						$self->show_template($para{"fatal_error_template"});
 					};
-					$errorsent = 1 if !$@;
+					if (!$@) {
+						$errorsent = 1;
+					}
+					elsif ($@ =~ /mod_?perl/i && $@ =~ /exit/i) {
+						#
+						# Under mod_perl, an exit() (deep in finalize()) called inside an eval (above) gets thrown and therefore caught above
+						# so we treat it as success
+						#
+						$errorsent = 1;
+					}
 				}
 				if (!$errorsent) {
 					print "<h1>The following fatal error occurred:</h1><p>$error\n";
@@ -1257,9 +1291,7 @@ sub new {
 		#
 		-e $para{sessions_dir} && !-d $para{sessions_dir} && croak "$para{sessions_dir} exists but is not a directory";
 		-d $para{sessions_dir} || mkdir($para{sessions_dir}, 0700) || croak "Failed to create $para{sessions_dir}: $!";
-		open(FH, ">$para{sessions_dir}/testing") || croak "$para{sessions_dir} is not writable by me: $!";
-		close(FH);
-		unlink("$para{sessions_dir}/testing") || die "Failed to delete $para{sessions_dir}/testing : $!\n";
+		-w $para{sessions_dir} || croak "$para{sessions_dir} is not writable by me";
 	}
 	elsif ($para{sessions_mysql_dbh}) {
 

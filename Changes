@@ -1,6 +1,13 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.27 2004/04/04 05:27:11 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.29 2004/08/07 19:33:55 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.15
+	- No longer tries to write and unlink a testing file to sessions_dir
+	  for every invocation
+	- Fatal error messages now have a stack backtrace appended to them
+	- Bugfix: Fatal errors are no longer sent to browser below the fatal
+	  error template content when running under mod_perl
 
 0.14
 	- Errors emailed via fatal_error_email now include header

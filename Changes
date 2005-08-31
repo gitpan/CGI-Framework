@@ -1,6 +1,10 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.35 2005/07/13 15:51:16 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.36 2005/08/31 16:08:25 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.22
+	- Fatal errors sent via sendmail now also try to respect supplied
+	  smtp_from parameter
 
 0.21
 	- Tweaked code that handles braindead browsers that do not properly

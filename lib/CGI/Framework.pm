@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.128 2005/07/15 14:16:33 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.129 2005/08/31 16:08:25 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.21";
+	$VERSION     = "0.22";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -1255,7 +1255,7 @@ sub new {
 				if (!$emailsent && $para{"fatal_error_email"} && $para{"sendmail"}) {
 					eval {
 						open(SMH, "| $para{sendmail} -t -i") || die "Failed to open pipe to sendmail: $!\n";
-						print SMH "From: CGI::Framework\n";
+						print SMH "From: " . ($para{"smtp_from"} || 'cgiframework@localhost') . "\n";
 						print SMH "To: ", (ref($para{"fatal_error_email"}) eq "ARRAY" ? join(",", @{ $para{"fatal_error_email"} }) : $para{"fatal_error_email"}), "\n";
 						print SMH "Subject: Fatal Error\n";
 						print SMH "X-CGI-Framework-Method: sendmail $para{sendmail}\n";

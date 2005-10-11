@@ -1,6 +1,6 @@
 package CGI::Framework;
 
-# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.129 2005/08/31 16:08:25 mina Exp $
+# $Header: /cvsroot/CGI::Framework/lib/CGI/Framework.pm,v 1.130 2005/10/11 16:21:24 mina Exp $
 
 use strict;
 use HTML::Template;
@@ -12,7 +12,7 @@ use Fcntl ':flock';
 BEGIN {
 	use Exporter ();
 	use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $LASTINSTANCE);
-	$VERSION     = "0.22";
+	$VERSION     = "0.23";
 	@ISA         = qw (Exporter);
 	@EXPORT      = qw ();
 	@EXPORT_OK   = qw (add_error assert_form assert_session clear_session dispatch form get_cgi_object get_cgi_session_object html html_push html_unshift initial_template initialize_cgi_framework log_this remember session show_template return_template);
@@ -561,6 +561,12 @@ B<OPTIONAL>
 
 If you wish to localize errors you add via the add_error() method, this key should contain the name of the class you created as the L<Locale::Maketext> localization class, such as for example "MyProject::L10N" or "MyProjectLocalization".   Refer to the "INTERNATIONALIZATION AND LOCALIZATION" section.  You must also set the "valid_languages" key if you wish to set this key.
 
+=item output_filter
+
+B<OPTIONAL>
+
+If you would like to do any manual hacking to the content just before it's sent to the browser, this key should contain the name of a sub (or a reference to a sub) that you'd like to have the framework call.  The sub will be passed 2 argumets: The CGI::Framework instance itself, and a reference to a scalar containing the content about to be sent.
+
 =item sendmail
 
 B<OPTIONAL>
@@ -723,11 +729,11 @@ In scalar context it returns the content suitable for sending to the client.  In
 
 This method accepts a scalar key as it's first argument and an optional scalar value as it's second.  If a value is supplied, it saves the key+value pair into the session for future retrieval.  If no value is supplied, it returns the previously-saved value associated with the given key.
 
-=item show_template($scalar)
+=item show_template($scalar [, $nofinalize])
 
 This method accepts a scalar template name, calls the pre__pre__all() sub if found, calls the pre_templatename() sub if found, calls the post__pre__all() sub if found, sends the template to the client, calls the pre__post__all() sub if found, calls the post_templatename() sub if found, calls the post__post__all() sub if found, then exits.  Internally uses the return_template() method to calculate actual content to send.
 
-Note: This method calls finalize() when done.  It does not return.
+Note: This method calls finalize() when done unless $nofinalize is set to true.  You probably never want to do this, in which case the call to finalize() will cause this method to never return.
 
 =back
 
@@ -869,7 +875,7 @@ I do not (knowingly) release buggy software.  If this is the latest release, it'
 	Mina Naguib
 	CPAN ID: MNAGUIB
 	mnaguib@cpan.org
-	http://www.topfx.com
+	http://mina.naguib.ca
 
 =head1 COPYRIGHT
 
@@ -1231,7 +1237,7 @@ sub new {
 				if ($para{"fatal_error_template"}) {
 					eval {
 						$self->{_html}->{_fatal_error} = $error;
-						$self->show_template($para{"fatal_error_template"});
+						$self->show_template($para{"fatal_error_template"}, 1);
 					};
 					if (!$@) {
 						$errorsent = 1;
@@ -1364,6 +1370,24 @@ sub new {
 		open(FH, ">>$para{log_filename}") || croak "Log filename $para{log_filename} is not writeable by me: $@";
 		close(FH);
 	}
+	if ($para{output_filter}) {
+		if (ref($para{output_filter}) eq "CODE") {
+
+			#
+			# It's a code ref - good
+			#
+		}
+		elsif (defined &{"$self->{callbacks_namespace}::$para{output_filter}"}) {
+
+			#
+			# It's a sub name that exists. good
+			#
+			$para{output_filter} = &{"$self->{callbacks_namespace}::$para{output_filter}"};
+		}
+		else {
+			croak "Output filter not a code ref and not a sub name that I can find";
+		}
+	}
 
 	#
 	# And now some initialization
@@ -1375,6 +1399,7 @@ sub new {
 	$self->{callbacks_namespace} = $para{callbacks_namespace};
 	$self->{log_filename}        = $para{log_filename};
 	$self->{disable_back_button} = $para{disable_back_button};
+	$self->{output_filter}       = $para{output_filter};
 	$self->{_cgi}                = new CGI || die "Failed to create a new CGI instance: $! $@\n";
 	$cookie_value = $self->{_cgi}->cookie($para{cookie_name}) || undef;
 
@@ -1612,8 +1637,9 @@ sub session {
 # THEN EXITS
 #
 sub show_template {
-	my $self = _getself(\@_);
+	my $self          = _getself(\@_);
 	my $template_name = shift || croak "Template name not supplied";
+	my $nofinalize    = shift;
 	my $content;
 	my $content_type;
 
@@ -1647,6 +1673,13 @@ sub show_template {
 	# Parse template
 	#
 	($content, $content_type) = $self->return_template($template_name);
+
+	#
+	# Implement outbound filter
+	#
+	if ($self->{output_filter}) {
+		&{ $self->{output_filter} }($self, \$content);
+	}
 
 	#
 	# Send content
@@ -1685,7 +1718,10 @@ sub show_template {
 		&{"$self->{callbacks_namespace}::post__post__all"}($self, $template_name);
 	}
 
-	$self->finalize();
+	if (!$nofinalize) {
+		$self->finalize();
+	}
+
 }
 
 #

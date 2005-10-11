@@ -1,6 +1,13 @@
-$Header: /cvsroot/CGI::Framework/Changes,v 1.36 2005/08/31 16:08:25 mina Exp $
+$Header: /cvsroot/CGI::Framework/Changes,v 1.37 2005/10/11 16:21:24 mina Exp $
 
 Revision history for Perl module CGI::Framework
+
+0.23
+	- New initializer parameter "output_filter"
+	- show_template accepts a second optional boolean parameter
+	  "nofinalize" which denotes it should not finalize() when done.
+	  This was used to bugfix fatal error emails not being sent out
+	  when not running under mod_perl
 
 0.22
 	- Fatal errors sent via sendmail now also try to respect supplied
